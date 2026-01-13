@@ -1,0 +1,1 @@
+Lightman is an artificial agent that exists on a Raspberry Pi 5 and is wired into a car with an OBD-II port connector. It is able to use text to speech in order to explain potential problems to the user. It is also able to switch between ECU tunes on the fly, and can generate new ones for later on.
