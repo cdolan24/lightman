@@ -13,7 +13,7 @@ Every car SHALL have a `race` profile and a `street` profile, which start with n
 - **THEN** `race` and `street` are returned, each with no tune
 
 ### Requirement: Assign a tune to a profile
-The system SHALL allow assigning any tune from the car's own library to a profile, replacing any previous assignment.
+The system SHALL allow assigning any approved tune from the car's own library to a profile, replacing any previous assignment. Assigning an unapproved tune SHALL be refused.
 
 #### Scenario: Assign
 - **WHEN** tune "Track Day" is assigned to the race profile
@@ -21,6 +21,10 @@ The system SHALL allow assigning any tune from the car's own library to a profil
 
 #### Scenario: Tune from another car
 - **WHEN** a tune id that is not in this car's library is assigned
+- **THEN** the assignment is refused and the profile is unchanged
+
+#### Scenario: Unapproved tune
+- **WHEN** an unapproved generated tune is assigned to the race profile
 - **THEN** the assignment is refused and the profile is unchanged
 
 ### Requirement: Profile names
