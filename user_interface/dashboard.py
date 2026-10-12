@@ -1,6 +1,8 @@
 # dashboard.py
 
-from flask import Flask, jsonify
+from pathlib import Path
+
+from flask import Flask, jsonify, send_from_directory
 
 from data_acquisition.obd_reader import OBDReader
 from tune_management.tune_switcher import TuneSwitcher
@@ -17,8 +19,15 @@ def engine_rpm():
 
 app.config['SWITCHER_FACTORY'] = lambda car_id: TuneSwitcher(car_id, engine_rpm=engine_rpm)
 
+STATIC = Path(__file__).parent / 'static'
+
+@app.route('/')
+def index():
+    return send_from_directory(STATIC, 'dashboard.html')
+
 @app.route('/api/obd')
 def get_obd_data():
+    # Queries the adapter directly; don't use while the data logger is running (use /api/cars/<id>/live).
     data = obd_reader.get_basic_data()
     return jsonify(data)
 

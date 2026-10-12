@@ -1,9 +1,11 @@
 # api.py
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request
 
+from tune_management.car_database import connect_car_db
 from tune_management.profiles import ProfileManager, UnknownProfile
 from tune_management.recommender import Recommender
 from tune_management.tune_manager import ApprovalRefused, TuneManager, TuneNotApproved, TuneNotFound
@@ -79,6 +81,29 @@ def revert(car_id):
 def _switch_response(result):
     status = {None: 200, 'not_found': 404}.get(result.error, 409)
     return jsonify(asdict(result)), status
+
+@api.get('/live')
+def live(car_id):
+    """The in-progress session from the database. Never queries the OBD adapter, which the logger owns."""
+    conn = connect_car_db(car_id)
+    try:
+        session = conn.execute("SELECT id, tune_id, started_at FROM sessions WHERE ended_at IS NULL "
+                               "ORDER BY id DESC LIMIT 1").fetchone()
+        if session is None:
+            return jsonify(session=None, sample=None, laps=[], best_lap=None)
+        sample = conn.execute("SELECT * FROM samples WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+                              (session['id'],)).fetchone()
+        laps = [dict(r) for r in conn.execute(
+            "SELECT lap_number, duration FROM laps WHERE session_id = ? ORDER BY lap_number", (session['id'],))]
+    finally:
+        conn.close()
+    if sample is not None:
+        sample = dict(sample)
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(sample['wall_time'])
+        sample['age_seconds'] = age.total_seconds()
+    best = min(laps, key=lambda lap: lap['duration']) if laps else None
+    return jsonify(session=dict(session), sample=sample, laps=laps,
+                   best_lap=best['lap_number'] if best else None)
 
 @api.get('/recommendations')
 def recommendations(car_id):

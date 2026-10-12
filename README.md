@@ -101,11 +101,21 @@ The limits (`DEFAULT_LIMITS`, plus `max_sample_age` = 10 s) can be overridden pe
 
 ### HTTP API
 
-`python -m user_interface.dashboard` serves these endpoints on port 5000:
+`python -m user_interface.dashboard` serves the **live dashboard** at `http://<pi>:5000/` (`/?car=<id>`, default car 1). It shows:
+- Live readings, which turn amber or red near the alert limits and are marked stale when no sample has arrived for over 5 s.
+- Laps (current, last and best).
+- The active tune, with honest status about the switch method.
+- Recommendations and recent switches.
+- Race, Street and **Revert to stock** buttons.
+
+It is fully self-contained and needs no internet in the car. Tune approval is deliberately not offered there; use the CLI or the companion app.
+
+The same server provides these endpoints:
 
 | Method & path | Body | Description |
 | --- | --- | --- |
-| `GET /api/obd` | | Live OBD-II readings |
+| `GET /api/obd` | | Queries the OBD-II adapter directly. Don't use it while the data logger runs; use `/live` |
+| `GET /api/cars/<id>/live` | | The in-progress session from recorded data: latest `sample` (with `age_seconds`), `laps` and `best_lap` |
 | `GET /api/cars/<id>/tunes` | | The car's tune library, with `origin`, `approved`, `approved_by` and `approved_at` |
 | `POST /api/cars/<id>/tunes/<tune_id>/approve` | `{"source": "dashboard", "approved_by": "Connor", "note": "..."}` | Approve a tune. `403` if the source isn't `dashboard`/`app`/`manual` or the name is missing |
 | `GET /api/cars/<id>/profiles` | | Profiles and their assigned tunes |

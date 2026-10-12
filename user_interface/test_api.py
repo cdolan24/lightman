@@ -109,6 +109,56 @@ class TestRecommendationsAPI(unittest.TestCase):
         (rec,) = client.get('/api/cars/1/recommendations').json
         self.assertEqual((rec['rule'], rec['suggested_profile']), ('race_overheating', 'street'))
 
+class TestLiveAPI(unittest.TestCase):
+    def test_no_session(self):
+        self.assertEqual(make_client().get('/api/cars/1/live').json,
+                         {'session': None, 'sample': None, 'laps': [], 'best_lap': None})
+
+    def test_running_session(self):
+        conn = connect_car_db(1)
+        with conn:
+            ended = conn.execute("INSERT INTO sessions (started_at, ended_at) VALUES ('a', 'b')").lastrowid
+            session = conn.execute("INSERT INTO sessions (started_at) VALUES (?)", (utc_now(),)).lastrowid
+            for rpm in (2000.0, 4500.0):
+                conn.execute("INSERT INTO samples (session_id, wall_time, elapsed, rpm, lap_number) "
+                             "VALUES (?, ?, 0, ?, 3)", (session, utc_now(), rpm))
+            for number, duration in ((1, 95.0), (2, 92.4)):
+                conn.execute("INSERT INTO laps (session_id, lap_number, start_elapsed, end_elapsed, duration) "
+                             "VALUES (?, ?, 0, 0, ?)", (session, number, duration))
+        conn.close()
+        with mock.patch('data_acquisition.obd_reader.obd.OBD') as obd_ctor:
+            live = make_client().get('/api/cars/1/live').json
+        obd_ctor.assert_not_called()
+        self.assertEqual(live['session']['id'], session)
+        self.assertNotEqual(live['session']['id'], ended)
+        self.assertEqual((live['sample']['rpm'], live['sample']['lap_number']), (4500.0, 3))
+        self.assertLess(live['sample']['age_seconds'], 5)
+        self.assertEqual([lap['duration'] for lap in live['laps']], [95.0, 92.4])
+        self.assertEqual(live['best_lap'], 2)
+
+class TestDashboardPage(unittest.TestCase):
+    def setUp(self):
+        import user_interface.dashboard as dashboard
+        self.app = dashboard.app
+        response = self.app.test_client().get('/?car=2')
+        self.assertEqual(response.status_code, 200)
+        self.html = response.get_data(as_text=True)
+        response.close()
+
+    def test_page_served(self):
+        self.assertIn('<title>Lightman</title>', self.html)
+
+    def test_no_external_resources(self):
+        self.assertNotRegex(self.html, r'https?://')
+
+    def test_api_paths_exist(self):
+        import re
+        rules = {str(r) for r in self.app.url_map.iter_rules()}
+        paths = set(re.findall(r"getJSON\('(/[a-z]+)", self.html)) | set(re.findall(r"act\('(/[a-z]+)'", self.html))
+        self.assertEqual(paths, {'/live', '/active', '/profiles', '/recommendations', '/history', '/switch', '/revert'})
+        for path in paths:
+            self.assertIn('/api/cars/<int:car_id>' + path, rules)
+
 class TestDashboardImport(unittest.TestCase):
     def test_import_does_not_touch_obd(self):
         with mock.patch('data_acquisition.obd_reader.obd.OBD') as obd_ctor:

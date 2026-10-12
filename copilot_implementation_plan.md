@@ -30,7 +30,7 @@ Status key: **done** · **partial** · **todo** · **blocked** (with reason). Im
 - **done** Interface with GPS and timing systems (`telemetry-logging`, `lap-timing`)
 - **done** Modular software design: separate modules for data acquisition, tune management, user interface and voice assistant
 - **todo** Interface with external sensors
-- **todo** Custom dashboard UI (web, served from the Pi); the HTTP API exists
+- **done** Custom dashboard UI (web, served from the Pi, works offline)
 - **todo** Mobile app (iOS/Android, optional)
 - **todo** Voice assistant integration (custom or Alexa/Google, optional)
 - **planned, separate repo** [Companion app](docs/companion-app.md) for tunes, voice training data and local model updates
@@ -50,7 +50,7 @@ Status key: **done** · **partial** · **todo** · **blocked** (with reason). Im
 ## 4. Real-Time Feedback & Copilot Interface — partial
 - **done** Voice assistant (Jarvis-style): text-to-speech feedback on engine health, performance and tune status (`copilot-feedback`)
 - **todo** Respond to user queries and commands
-- **todo** Dashboard display: live data, lap times, tune status, alerts
+- **done** Dashboard display: live data, lap times, tune status, alerts (`live-dashboard`)
 
 ## 5. Manual Override System — todo
 - **todo** Physical controls: dedicated override button or switch for manual tune selection

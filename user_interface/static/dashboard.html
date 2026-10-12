@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lightman</title>
+<style>
+  /* Self-contained on purpose: the car usually has no internet. */
+  :root {
+    --bg: #0d0f12; --panel: #171a1f; --line: #262a31; --text: #e8eaed; --muted: #8a9099;
+    --ok: #3ecf8e; --warn: #f5a524; --bad: #f2555a; --accent: #4ea1ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .04em; }
+  .pill { padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--line); }
+  .pill.live { background: color-mix(in srgb, var(--ok) 25%, transparent); color: var(--ok); }
+  .pill.stale { background: color-mix(in srgb, var(--warn) 25%, transparent); color: var(--warn); }
+  .pill.off { color: var(--muted); }
+  .muted { color: var(--muted); }
+  main { display: grid; gap: 12px; padding: 12px 16px; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+  .readouts { grid-column: 1 / -1; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(140px, 45%), 1fr)); }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .tile .label { color: var(--muted); font-size: 13px; }
+  .tile .value { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tile .unit { color: var(--muted); font-size: 15px; margin-left: 4px; }
+  .tile.warn .value { color: var(--warn); }
+  .tile.bad .value { color: var(--bad); }
+  .stale .tile .value { opacity: .45; }
+  .tune-name { font-size: 24px; font-weight: 700; }
+  .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  button { font: inherit; font-weight: 600; padding: 12px 18px; border-radius: 8px; border: 1px solid var(--line);
+           background: #20242b; color: var(--text); cursor: pointer; min-width: 96px; }
+  button.active { border-color: var(--accent); color: var(--accent); }
+  button.revert { border-color: color-mix(in srgb, var(--warn) 60%, transparent); }
+  button:disabled { opacity: .5; cursor: wait; }
+  .result { margin-top: 10px; min-height: 1.4em; }
+  .result.bad { color: var(--bad); }
+  .result.ok { color: var(--ok); }
+  .laps-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .laps-summary .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 6px 0; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li.best { color: var(--ok); }
+  li.warning { color: var(--warn); }
+  li.failed { color: var(--bad); }
+  .num { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LIGHTMAN</h1>
+  <span id="car" class="muted"></span>
+  <span id="status" class="pill off">Connecting…</span>
+</header>
+<main>
+  <div class="readouts" id="readouts"></div>
+
+  <section>
+    <h2>Tune</h2>
+    <div class="tune-name" id="tune-name">—</div>
+    <div class="muted" id="tune-detail"></div>
+    <div class="buttons" id="profile-buttons"></div>
+    <div class="result" id="result"></div>
+  </section>
+
+  <section>
+    <h2>Laps</h2>
+    <div class="laps-summary">
+      <div><div class="muted">Current</div><div class="value" id="lap-current">—</div></div>
+      <div><div class="muted">Last</div><div class="value" id="lap-last">—</div></div>
+      <div><div class="muted">Best</div><div class="value" id="lap-best">—</div></div>
+    </div>
+    <ul id="laps"></ul>
+  </section>
+
+  <section>
+    <h2>Recommendations</h2>
+    <ul id="recommendations"></ul>
+  </section>
+
+  <section>
+    <h2>Recent switches</h2>
+    <ul id="history"></ul>
+  </section>
+</main>
+
+<script>
+const car = Number(new URLSearchParams(location.search).get('car')) || 1;
+const api = `/api/cars/${car}`;
+const STALE_AFTER = 5;   // seconds
+const READOUTS = [
+  ['rpm', 'RPM', '', 0],
+  ['speed', 'Speed', 'km/h', 0],
+  ['coolant_temp', 'Coolant', '°C', 0, v => v >= 110 ? 'bad' : v >= 105 ? 'warn' : ''],
+  ['intake_temp', 'Intake', '°C', 0, v => v >= 60 ? 'warn' : ''],
+  ['throttle_pos', 'Throttle', '%', 0],
+  ['fuel_level', 'Fuel', '%', 0, v => v <= 10 ? 'warn' : ''],
+];
+
+const $ = id => document.getElementById(id);
+function el(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+function lapTime(seconds) {
+  if (seconds == null) return '—';
+  const m = Math.floor(seconds / 60), s = seconds - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+}
+async function getJSON(path) {
+  const response = await fetch(api + path);
+  return response.json();
+}
+
+$('car').textContent = `Car ${car}`;
+const tiles = {};
+for (const [key, label, unit] of READOUTS) {
+  const tile = el('div', undefined, 'tile');
+  const value = el('span', '—', 'value');
+  tile.append(el('div', label, 'label'), value, el('span', unit, 'unit'));
+  $('readouts').append(tile);
+  tiles[key] = {tile, value};
+}
+
+function renderLive(live) {
+  const status = $('status');
+  const sample = live.sample;
+  const stale = !sample || sample.age_seconds > STALE_AFTER;
+  if (!live.session) {
+    status.textContent = 'No session'; status.className = 'pill off';
+  } else if (stale) {
+    status.textContent = sample ? `Stale · ${Math.round(sample.age_seconds)} s old` : 'Waiting for data';
+    status.className = 'pill stale';
+  } else {
+    status.textContent = 'Live'; status.className = 'pill live';
+  }
+  $('readouts').classList.toggle('stale', stale);
+  for (const [key, , , digits, level] of READOUTS) {
+    const value = sample ? sample[key] : null;
+    tiles[key].value.textContent = value == null ? '—' : value.toFixed(digits);
+    tiles[key].tile.className = 'tile ' + (value != null && level ? level(value) : '');
+  }
+
+  const laps = live.laps;
+  $('lap-current').textContent = sample && sample.lap_number != null ? sample.lap_number : '—';
+  $('lap-last').textContent = laps.length ? lapTime(laps[laps.length - 1].duration) : '—';
+  const best = laps.find(l => l.lap_number === live.best_lap);
+  $('lap-best').textContent = best ? lapTime(best.duration) : '—';
+  $('laps').replaceChildren(...laps.slice().reverse().map(l =>
+    el('li', `Lap ${l.lap_number}  ${lapTime(l.duration)}`, 'num' + (l.lap_number === live.best_lap ? ' best' : ''))));
+  if (!laps.length) $('laps').append(el('li', 'No completed laps', 'muted'));
+}
+
+function renderTune(active, profiles, history) {
+  $('tune-name').textContent = active.tune_name || 'No tune active';
+  const lastOk = history.find(h => h.success);
+  const method = lastOk ? lastOk.method : null;
+  const parts = [];
+  if (active.profile) parts.push(`${active.profile} profile`);
+  if (method === 'software') parts.push('software only, ECU not changed');
+  else if (method) parts.push(`applied via ${method}`);
+  $('tune-detail').textContent = parts.join(' · ');
+
+  const buttons = profiles.map(p => {
+    const b = el('button', p.name[0].toUpperCase() + p.name.slice(1), p.name === active.profile ? 'active' : '');
+    b.title = p.tune_name ? `Tune: ${p.tune_name}` : 'No tune assigned';
+    b.onclick = () => act('/switch', {source: 'dashboard', profile: p.name});
+    return b;
+  });
+  const revert = el('button', 'Revert to stock', 'revert');
+  revert.onclick = () => act('/revert', {source: 'dashboard'});
+  $('profile-buttons').replaceChildren(...buttons, revert);
+}
+
+function renderRecommendations(recs) {
+  $('recommendations').replaceChildren(...recs.map(r => el('li', r.reason, r.severity)));
+  if (!recs.length) $('recommendations').append(el('li', 'None', 'muted'));
+}
+
+function renderHistory(history) {
+  $('history').replaceChildren(...history.map(h => {
+    const time = new Date(h.timestamp).toLocaleTimeString();
+    const what = h.kind === 'revert' ? 'revert to stock' : (h.requested_profile || `tune ${h.requested_tune_id}`);
+    const outcome = h.success ? h.method : `refused: ${h.reason}`;
+    return el('li', `${time} · ${h.source} · ${what} · ${outcome}`, h.success ? '' : 'failed');
+  }));
+  if (!history.length) $('history').append(el('li', 'None', 'muted'));
+}
+
+async function act(path, body) {
+  const buttons = document.querySelectorAll('button');
+  buttons.forEach(b => b.disabled = true);
+  const result = $('result');
+  try {
+    const response = await fetch(api + path, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const data = await response.json();
+    result.textContent = data.ok ? `Done (${data.method}${data.method === 'software' ? ', ECU not changed' : ''})`
+                                 : data.reason;
+    result.className = 'result ' + (data.ok ? 'ok' : 'bad');
+  } catch (e) {
+    result.textContent = 'Could not reach Lightman'; result.className = 'result bad';
+  } finally {
+    buttons.forEach(b => b.disabled = false);
+    refresh();
+  }
+}
+
+async function refresh() {
+  try {
+    const [live, active, profiles, recs, history] = await Promise.all([
+      getJSON('/live'), getJSON('/active'), getJSON('/profiles'), getJSON('/recommendations'),
+      getJSON('/history?limit=5')]);
+    renderLive(live);
+    renderTune(active, profiles, history);
+    renderRecommendations(recs);
+    renderHistory(history);
+  } catch (e) {
+    $('status').textContent = 'Lightman unreachable'; $('status').className = 'pill stale';
+  }
+}
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>
