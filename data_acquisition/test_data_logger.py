@@ -3,7 +3,11 @@
 import sqlite3
 import unittest
 
-from data_acquisition.data_logger import DataLogger
+import threading
+
+from datetime import datetime, timedelta, timezone
+
+from data_acquisition.data_logger import DataLogger, close_stale_sessions, sampled_engine_rpm
 from data_acquisition.gps_reader import GPSFix
 from data_acquisition.test_lap_timer import LINE, pos
 from data_acquisition.test_obd_reader import FakeConnection
@@ -145,6 +149,45 @@ class TestDataLogger(unittest.TestCase):
         # GPS time mapped onto session elapsed time via the first fix (t=0 at elapsed 0).
         self.assertAlmostEqual(lap['start_elapsed'], 10.0, places=3)
         self.assertAlmostEqual(lap['end_elapsed'], 100.0, places=3)
+
+class TestStopAndStale(unittest.TestCase):
+    def test_run_stops_on_event(self):
+        stop = threading.Event()
+        logger = DataLogger(20, FixedReader(READING), rate_hz=20)
+        thread = threading.Thread(target=logger.run, kwargs={'stop_event': stop})
+        thread.start()
+        stop.wait(0.3)  # let it take a few samples
+        stop.set()
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        (session,) = query(20, "SELECT * FROM sessions")
+        self.assertIsNotNone(session['ended_at'])
+        self.assertGreater(len(query(20, "SELECT * FROM samples")), 0)
+
+    def test_close_stale_sessions(self):
+        logger = DataLogger(21, FixedReader(READING), wall_clock=lambda: "2026-10-12T10:00:00+00:00")
+        logger.start()
+        logger.tick()
+        logger._conn.close()                     # simulate power loss: never stopped
+        empty = DataLogger(21, FixedReader(READING), wall_clock=lambda: "2026-10-12T11:00:00+00:00")
+        empty.start()
+        empty._conn.close()
+        self.assertEqual(close_stale_sessions(21), 2)
+        rows = query(21, "SELECT started_at, ended_at FROM sessions ORDER BY id")
+        self.assertEqual([r['ended_at'] for r in rows], ["2026-10-12T10:00:00+00:00", "2026-10-12T11:00:00+00:00"])
+        self.assertEqual(close_stale_sessions(21), 0)
+
+class TestSampledEngineRpm(unittest.TestCase):
+    def test_fresh_stale_absent(self):
+        self.assertIsNone(sampled_engine_rpm(22))
+        t0 = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
+        logger = DataLogger(22, FixedReader({**READING, 'rpm': 0.0}), wall_clock=lambda: t0.isoformat())
+        logger.start()
+        logger.tick()
+        self.assertEqual(sampled_engine_rpm(22, now=t0 + timedelta(seconds=1)), 0.0)
+        self.assertIsNone(sampled_engine_rpm(22, now=t0 + timedelta(seconds=10)))
+        logger.stop()
+        self.assertIsNone(sampled_engine_rpm(22, now=t0 + timedelta(seconds=1)))  # session closed
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,6 +29,7 @@ Status key: **done** · **partial** · **todo** · **blocked** (with reason). Im
 - **done** Raspberry Pi 5 as central hub, connected to the car's OBD-II port for ECU data
 - **done** Interface with GPS and timing systems (`telemetry-logging`, `lap-timing`)
 - **done** Modular software design: separate modules for data acquisition, tune management, user interface and voice assistant
+- **done** Drag-and-drop service: `python -m lightman` runs logging, feedback and the dashboard from one config and starts at boot via systemd (`lightman-service`)
 - **todo** Interface with external sensors
 - **done** Custom dashboard UI (web, served from the Pi, works offline)
 - **todo** Mobile app (iOS/Android, optional)

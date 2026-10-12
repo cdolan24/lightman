@@ -8,6 +8,7 @@ from flask import Flask
 from tune_management.car_database import connect_car_db, utc_now
 from tune_management.test_recommender import setup_car
 from tune_management.tune_manager import TuneManager
+from tune_management.tune_switcher import TuneSwitcher
 from user_interface.api import api
 
 def make_client():
@@ -158,6 +159,20 @@ class TestDashboardPage(unittest.TestCase):
         self.assertEqual(paths, {'/live', '/active', '/profiles', '/recommendations', '/history', '/switch', '/revert'})
         for path in paths:
             self.assertIn('/api/cars/<int:car_id>' + path, rules)
+
+class TestCreateApp(unittest.TestCase):
+    def test_factory_app(self):
+        from user_interface.dashboard import create_app
+        calls = []
+        def factory(car_id):
+            calls.append(car_id)
+            return TuneSwitcher(car_id)
+        client = create_app(factory).test_client()
+        page = client.get('/')
+        self.assertIn('<title>Lightman</title>', page.get_data(as_text=True))
+        page.close()
+        self.assertEqual(client.get('/api/cars/3/active').status_code, 200)
+        self.assertEqual(calls, [3])
 
 class TestDashboardImport(unittest.TestCase):
     def test_import_does_not_touch_obd(self):

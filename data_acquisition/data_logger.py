@@ -2,6 +2,7 @@
 
 import argparse
 import time
+from datetime import datetime, timezone
 
 from data_acquisition.lap_timer import LapTimer
 from data_acquisition.obd_reader import OBDReader, QUERIES, connect
@@ -82,21 +83,58 @@ class DataLogger:
         self._conn.close()
         self._conn = None
 
-    def run(self, tune_id=None, duration=None):
-        """Sample at the configured rate until duration (seconds) elapses or Ctrl+C."""
+    def run(self, tune_id=None, duration=None, stop_event=None):
+        """Sample at the configured rate until duration (seconds) elapses, stop_event is set, or Ctrl+C."""
         self.start(tune_id)
         next_tick = self.clock()
         try:
             while duration is None or self.clock() - self._started < duration:
+                if stop_event is not None and stop_event.is_set():
+                    break
                 self.tick()
                 next_tick += self.interval
                 # When behind (slow adapter), run as fast as possible instead of sleeping.
-                self.sleep(max(0.0, next_tick - self.clock()))
+                delay = max(0.0, next_tick - self.clock())
+                if stop_event is not None:
+                    stop_event.wait(delay)
+                else:
+                    self.sleep(delay)
         except KeyboardInterrupt:
             pass
         finally:
             self.stop()
         return self.session_id
+
+def sampled_engine_rpm(car_id, max_age=2.0, now=None):
+    """Engine rpm from the open session's latest sample if at most max_age seconds old, else None.
+
+    Lets other components check engine speed without querying the adapter the logger owns.
+    """
+    conn = connect_car_db(car_id)
+    sample = conn.execute('''
+        SELECT s.rpm, s.wall_time FROM samples s JOIN sessions ON sessions.id = s.session_id
+        WHERE sessions.ended_at IS NULL ORDER BY s.id DESC LIMIT 1
+    ''').fetchone()
+    conn.close()
+    if sample is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    if (now - datetime.fromisoformat(sample['wall_time'])).total_seconds() > max_age:
+        return None
+    return sample['rpm']
+
+def close_stale_sessions(car_id):
+    """End sessions left open by a power cut, at their last sample's time (or start time if none)."""
+    conn = connect_car_db(car_id)
+    with conn:
+        closed = conn.execute('''
+            UPDATE sessions SET ended_at = COALESCE(
+                (SELECT wall_time FROM samples WHERE session_id = sessions.id ORDER BY id DESC LIMIT 1),
+                started_at)
+            WHERE ended_at IS NULL
+        ''').rowcount
+    conn.close()
+    return closed
 
 def _parse_line(text):
     lat1, lon1, lat2, lon2 = (float(v) for v in text.split(','))

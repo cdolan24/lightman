@@ -20,13 +20,42 @@ Lightman is an artificial agent for track/street cars, running on a Raspberry Pi
 - `docs/` - [Product philosophy](docs/product-philosophy.md), [companion app](docs/companion-app.md), [extensibility](docs/extensibility.md), [open issues](docs/open-issues/)
 - `copilot_implementation_plan.md` - Roadmap with per-section status
 
-## Getting Started
-1. Copy the repository onto the Pi, create a virtualenv and install the runtime dependencies:
+## Quick Start on a Raspberry Pi
+
+1. Copy this repository onto the Pi (Raspberry Pi OS Bookworm or newer, Python 3.11+), plug in the OBD-II adapter (and GPS receiver, if you have one), then run:
    ```
-   python -m venv .venv
-   .venv/bin/pip install -r requirements.txt      # Windows: .venv\Scripts\pip
+   bash deploy/install.sh
+   sudo systemctl start lightman
    ```
-2. For development, install `requirements-dev.txt` instead and run `pytest`. Tests that need real hardware are skipped unless you run `pytest -m hardware`.
+   The install script creates the virtualenv, installs `requirements.txt`, copies `lightman.example.toml` to `/etc/lightman.toml` (if there isn't one already), adds you to the `dialout` and `audio` groups, and enables the `lightman` systemd service. From then on, Lightman starts every time the Pi boots and restarts if it crashes.
+2. Open the dashboard at `http://<pi-hostname>.local:5000/`. Logs are at `journalctl -u lightman -f`.
+
+`python -m lightman [--config PATH]` runs everything in one process: the data logger (the only process that talks to the OBD-II adapter), spoken feedback, and the dashboard/API. Each boot is one logging session, and sessions left open by a power cut are closed on the next start. If the OBD-II adapter, GPS or audio is missing, only that feature is disabled (with a log message). A component that crashes is restarted without stopping the others.
+
+### Configuration
+
+Settings come from a TOML file: `--config`, else `$LIGHTMAN_CONFIG`, else `./lightman.toml`. The installed service uses `/etc/lightman.toml`. Every setting is optional, and a typo or invalid value stops startup with an error naming the setting. See `lightman.example.toml`.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `car_id` | `1` | Which car's database to use |
+| `db_root` | `"car_databases"` | Where car databases live (relative to the install directory) |
+| `obd.port` | `""` | OBD-II adapter port (e.g. `/dev/ttyUSB0`, `/dev/rfcomm0`). `""` means auto-detect |
+| `obd.timeout` | `30.0` | Seconds to wait for the adapter before logging without engine data |
+| `logging.rate` | `1.0` | Samples per second (about 2 is the practical max over an ELM327) |
+| `gps.port` | `""` | NMEA GPS receiver port (e.g. `/dev/ttyACM0`). `""` means no GPS |
+| `gps.baud` | `9600` | GPS baud rate |
+| `lap_timing.line` | `[]` | Start/finish line `[lat1, lon1, lat2, lon2]`. Needs `gps.port` |
+| `lap_timing.min_lap_time` | `10.0` | Ignore line crossings closer together than this (s) |
+| `dashboard.host` | `"0.0.0.0"` | Use `"127.0.0.1"` to allow only a screen attached to the Pi |
+| `dashboard.port` | `5000` | Dashboard/API port |
+| `voice.enabled` | `true` | Spoken copilot feedback |
+
+> Not yet verified on real Pi hardware: audio output from a system service. If voice is silent under systemd, check `journalctl -u lightman` for "voice feedback disabled". The rest of the service is unaffected.
+
+## Development
+
+Install `requirements-dev.txt` and run `pytest`. Tests that need real hardware are skipped unless you run `pytest -m hardware`. The components below can also be run on their own for development or debugging.
 
 ## Logging a Session
 
@@ -37,7 +66,7 @@ python -m data_acquisition.data_logger --car-id 1 [options]
 | Option | Description |
 | --- | --- |
 | `--car-id` | Car whose database (`car_databases/car_<id>.db`) receives the session (required) |
-| `--tune-id` | Active tune to tag the session with |
+| `--tune-id` | Tune to tag the session with (default: the car's active tune) |
 | `--rate` | Samples per second (default 1). Six PIDs over a serial ELM327 limits this to roughly 2 Hz |
 | `--duration` | Stop after this many seconds (default: run until Ctrl+C) |
 | `--obd-port` | OBD-II adapter port (default: auto-detect) |
