@@ -1,26 +1,21 @@
 # data_logger.py
 
 import argparse
-import sqlite3
 import time
-from datetime import datetime, timezone
 
 from data_acquisition.lap_timer import LapTimer
 from data_acquisition.obd_reader import OBDReader, QUERIES, connect
-from tune_management.car_database import get_db_path, init_car_db
+from tune_management.car_database import connect_car_db, get_db_path, utc_now
 
 PID_FIELDS = [key for key, _ in QUERIES]
 SAMPLE_FIELDS = ['session_id', 'wall_time', 'elapsed', 'lap_number', *PID_FIELDS,
                  'latitude', 'longitude', 'gps_speed']
 
-def _utc_now():
-    return datetime.now(timezone.utc).isoformat()
-
 class DataLogger:
     """Records a session of OBD-II + GPS samples, and laps, into a car's database."""
 
     def __init__(self, car_id, obd_reader, gps=None, lap_line=None, min_lap_time=10.0,
-                 rate_hz=1.0, clock=time.monotonic, sleep=time.sleep, wall_clock=_utc_now):
+                 rate_hz=1.0, clock=time.monotonic, sleep=time.sleep, wall_clock=utc_now):
         self.car_id = car_id
         self.obd_reader = obd_reader
         self.gps = gps
@@ -36,8 +31,7 @@ class DataLogger:
 
     def start(self, tune_id=None):
         """Open a session tagged with tune_id, or with the car's active tune when none is given."""
-        init_car_db(self.car_id)
-        self._conn = sqlite3.connect(get_db_path(self.car_id))
+        self._conn = connect_car_db(self.car_id)
         if tune_id is None:
             tune_id = self._conn.execute("SELECT active_tune_id FROM car_state").fetchone()[0]
         cur = self._conn.execute(

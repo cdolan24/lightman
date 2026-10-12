@@ -2,9 +2,8 @@
 
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
-from tune_management.car_database import connect_car_db
+from tune_management.car_database import connect_car_db, utc_now
 from tune_management.ecu_backend import ECUError, SoftwareBackend
 from tune_management.profiles import ProfileManager, UnknownProfile
 from tune_management.tune_manager import TuneManager, TuneNotFound
@@ -116,7 +115,7 @@ class TuneSwitcher:
         conn = connect_car_db(self.car_id)
         with conn:
             conn.execute("UPDATE car_state SET active_tune_id = ?, active_profile = ?, updated_at = ?",
-                         (tune['id'], profile_name, _now()))
+                         (tune['id'], profile_name, utc_now()))
         conn.close()
         return SwitchResult(True, self.backend.method, active_tune_id=tune['id'], active_profile=profile_name,
                             previous_tune_id=previous)
@@ -128,13 +127,9 @@ class TuneSwitcher:
                 INSERT INTO tune_switches (timestamp, source, kind, requested_profile, requested_tune_id,
                                            from_tune_id, to_tune_id, method, success, reason)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (_now(), source, kind, profile, tune_id, result.previous_tune_id, result.active_tune_id,
+            ''', (utc_now(), source, kind, profile, tune_id, result.previous_tune_id, result.active_tune_id,
                   result.method, int(result.ok), result.reason))
         conn.close()
-
-def _now():
-    return datetime.now(timezone.utc).isoformat()
-
 if __name__ == "__main__":
     switcher = TuneSwitcher(1)
     print(switcher.switch('manual', profile='street'))

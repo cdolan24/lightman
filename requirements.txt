@@ -1,8 +1,4 @@
 obd
 pyserial
 Flask
-pandas
-numpy
 pyttsx3
-SpeechRecognition
-pytest

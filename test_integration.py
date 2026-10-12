@@ -1,8 +1,12 @@
 # test_integration.py
 
 import unittest
+
+import pytest
+
 from integration_main import main
 
+@pytest.mark.hardware
 class TestIntegration(unittest.TestCase):
     def test_main_runs(self):
         try:

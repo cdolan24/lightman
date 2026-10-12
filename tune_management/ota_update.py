@@ -1,20 +1,13 @@
 # ota_update.py
 
 class OTAUpdate:
-    def __init__(self):
-        pass
+    """Over-the-air software updates (plan section 8). Not implemented yet.
+
+    Tune updates are not delivered this way: tunes arrive through import and need human approval.
+    """
 
     def check_for_updates(self):
-        # Placeholder: Implement actual OTA update logic
-        print("Checking for updates...")
-        return False
+        raise NotImplementedError("OTA updates are not implemented yet")
 
     def apply_update(self):
-        # Placeholder: Implement actual update application
-        print("Applying update...")
-        return True
-
-if __name__ == "__main__":
-    ota = OTAUpdate()
-    if ota.check_for_updates():
-        ota.apply_update()
+        raise NotImplementedError("OTA updates are not implemented yet")

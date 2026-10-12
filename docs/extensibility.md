@@ -1,4 +1,4 @@
-# extensibility_note.md
+# Extensibility
 
 This project is designed for extensibility. New features, sensors, analytics, and user interface enhancements can be added via the plugin system in `tune_management/plugin_system.py`.
 

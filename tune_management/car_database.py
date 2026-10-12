@@ -10,6 +10,13 @@ DB_ROOT = Path(os.environ.get('LIGHTMAN_DB_ROOT', 'car_databases'))
 
 DEFAULT_PROFILES = ('race', 'street')
 
+# Database files whose schema has been created/migrated by this process.
+_initialized = set()
+
+def utc_now():
+    """Current UTC time as an ISO 8601 string, the timestamp format used in every table."""
+    return datetime.now(timezone.utc).isoformat()
+
 def get_db_path(car_id):
     """Return the path for a car's database file."""
     return Path(DB_ROOT) / f"car_{car_id}.db"
@@ -88,7 +95,7 @@ def init_car_db(car_id):
     if 'origin' in added:
         # Tunes that predate provenance were saved by a person; approve them, marked for review.
         c.execute("UPDATE tunes SET approved_at = ?, approved_by = 'migration' WHERE approved_at IS NULL",
-                  (datetime.now(timezone.utc).isoformat(),))
+                  (utc_now(),))
     # Approval covers exact bytes and origin, so neither may change after saving, whoever writes the SQL.
     c.execute('''
         CREATE TRIGGER IF NOT EXISTS tunes_immutable
@@ -133,6 +140,7 @@ def init_car_db(car_id):
     _add_columns(c, 'tune_switches', {'kind': "TEXT NOT NULL DEFAULT 'switch'"})
     conn.commit()
     conn.close()
+    _initialized.add(Path(db_path).resolve())
 
 def _add_columns(c, table, columns):
     """Add any missing columns to table; return the names that were added."""
@@ -143,9 +151,11 @@ def _add_columns(c, table, columns):
     return added
 
 def connect_car_db(car_id):
-    """Initialize (if needed) and open a car's database with rows accessible by column name."""
-    init_car_db(car_id)
-    conn = sqlite3.connect(get_db_path(car_id), timeout=5)
+    """Initialize (once per process) and open a car's database with rows accessible by column name."""
+    db_path = get_db_path(car_id)
+    if db_path.resolve() not in _initialized or not db_path.exists():
+        init_car_db(car_id)
+    conn = sqlite3.connect(db_path, timeout=5)
     conn.row_factory = sqlite3.Row
     return conn
 

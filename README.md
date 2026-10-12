@@ -17,14 +17,16 @@ Lightman is an artificial agent for track/street cars, running on a Raspberry Pi
 - `user_interface/` - Dashboard and app integration
 - `voice_assistant/` - Text-to-speech and command handling
 - `openspec/` - Specs and change proposals (OpenSpec)
+- `docs/` - [Product philosophy](docs/product-philosophy.md), [companion app](docs/companion-app.md), [extensibility](docs/extensibility.md), [open issues](docs/open-issues/)
+- `copilot_implementation_plan.md` - Roadmap with per-section status
 
 ## Getting Started
-1. Create a virtualenv and install dependencies:
+1. Copy the repository onto the Pi, create a virtualenv and install the runtime dependencies:
    ```
    python -m venv .venv
    .venv/bin/pip install -r requirements.txt      # Windows: .venv\Scripts\pip
    ```
-2. Run the tests that need no hardware: `pytest data_acquisition tune_management`
+2. For development, install `requirements-dev.txt` instead and run `pytest`. Tests that need real hardware are skipped unless you run `pytest -m hardware`.
 
 ## Logging a Session
 
@@ -104,6 +106,6 @@ Every car has a `race` and a `street` profile, and each can point at a tune from
 
 ## Notes
 - Each car has a dedicated database for tunes and logs.
-- Designed for extensibility and future features.
+- Tune authoring, voice training data and local model updates will live in a separate [companion app](docs/companion-app.md), keeping this repository drag-and-drop for the Pi.
 
 Only thing I can't do with this is find my 10mm

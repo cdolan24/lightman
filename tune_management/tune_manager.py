@@ -3,9 +3,8 @@
 import base64
 import json
 import sqlite3
-from datetime import datetime, timezone
 
-from tune_management.car_database import connect_car_db
+from tune_management.car_database import connect_car_db, utc_now
 
 EXPORT_FORMAT = 'lightman-tune'
 EXPORT_VERSION = 1
@@ -34,9 +33,6 @@ class StockTuneExists(ValueError):
 class TuneNotApproved(ValueError):
     pass
 
-def _now():
-    return datetime.now(timezone.utc).isoformat()
-
 def _tune_dict(row):
     tune = dict(row)
     tune['approved'] = tune['approved_at'] is not None
@@ -54,7 +50,10 @@ class TuneManager:
         """Store a tune and return its id. Stock and human tunes are approved on save; others need approve_tune."""
         if origin not in ORIGINS:
             raise ValueError(f"origin must be one of {ORIGINS}, not {origin!r}")
-        approved_at, approved_by = (_now(), 'self' if origin == 'human' else 'stock')             if origin in SELF_APPROVED_ORIGINS else (None, None)
+        if origin in SELF_APPROVED_ORIGINS:
+            approved_at, approved_by = utc_now(), 'self' if origin == 'human' else 'stock'
+        else:
+            approved_at, approved_by = None, None
         conn = self._connect()
         try:
             with conn:
@@ -92,7 +91,7 @@ class TuneManager:
         conn = self._connect()
         with conn:
             conn.execute("UPDATE tunes SET approved_at = ?, approved_by = ?, approval_note = ? WHERE id = ?",
-                         (_now(), f"{approved_by.strip()} ({source})", note, tune_id))
+                         (utc_now(), f"{approved_by.strip()} ({source})", note, tune_id))
         conn.close()
         return self.get_tune(tune_id)
 
@@ -133,7 +132,7 @@ class TuneManager:
             if conn.execute("SELECT 1 FROM car_state WHERE active_tune_id = ?", (tune_id,)).fetchone():
                 raise TuneInUse(f"Tune {tune_id} is the active tune")
             with conn:
-                conn.execute("UPDATE tunes SET deleted_at = ? WHERE id = ?", (_now(), tune_id))
+                conn.execute("UPDATE tunes SET deleted_at = ? WHERE id = ?", (utc_now(), tune_id))
         finally:
             conn.close()
 

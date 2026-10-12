@@ -1,86 +1,69 @@
 # Lightman Copilot Implementation Plan
 
-## Notes for Future Development
+Status key: **done** · **partial** · **todo** · **blocked** (with reason). Implemented behaviour is specified in `openspec/specs/`.
 
 ## Tools for Implementation
 
 ### Hardware
- - CAN bus adapter (if needed)
- - External sensors (optional: tire temp, brake pressure, etc.)
+- Raspberry Pi 5 (central hub), OBD-II adapter (USB or Bluetooth ELM327)
+- GPS receiver (NMEA, 10 Hz recommended for lap timing)
+- CAN bus adapter (if needed)
+- External sensors (optional: tire temp, brake pressure, etc.)
 
 ### Software & Libraries
- - TunerPro RT (primary ECU tuning software)
- - Plotly or Matplotlib (data visualization)
- - OpenCV (camera/sensor integration, optional)
- - Scikit-learn or TensorFlow (machine learning for predictive maintenance/tuning)
- - Requests/HTTPx (API calls)
- - Bluetooth/WiFi libraries (wireless communication)
+- ECU tuning: TunerPro RT (primary), MegaSquirt TunerStudio, ECUFlash (Mitsubishi/Subaru), HP Tuners VCM Suite (GM/Ford). These are used from the [companion app](docs/companion-app.md), not on the Pi
+- OBD-II diagnostic tools (ScanTool, Torque, etc.)
+- Plotly or Matplotlib (data visualization)
+- OpenCV (camera/sensor integration, optional)
+- Scikit-learn or TensorFlow (machine learning for predictive maintenance/tuning)
+- Requests/HTTPx (API calls), Bluetooth/WiFi libraries (wireless communication)
+- AWS/GCP/Azure or Firebase (cloud storage / mobile backend, optional)
 
 ### Development & Testing
- - CI/CD tools (GitHub Actions, Travis CI)
- - Hardware simulators/emulators (for bench testing)
+- CI/CD tools (GitHub Actions)
+- Hardware simulators/emulators (for bench testing)
+
 ---
-## 1. Core System Architecture
- - TunerPro RT (primary ECU tuning software)
- - MegaSquirt TunerStudio (alternative, if supported)
- - ECUFlash (for Mitsubishi/Subaru, if needed)
- - HP Tuners VCM Suite (for GM/Ford, if needed)
- - OBD-II diagnostic tools (ScanTool, Torque, etc.)
-- **Raspberry Pi 5 as Central Hub**
-  - Connect to car’s OBD-II port for ECU data.
- - Custom dashboard (web or Pi-based)
- - Mobile app (iOS/Android, optional)
- - Voice assistant integration (custom or Alexa/Google, optional)
-  - Interface with GPS, timing systems, and external sensors.
-- **Modular Software Design**
- - AWS/GCP/Azure (cloud storage, optional)
- - Firebase (mobile app backend, optional)
-  - Separate modules for data acquisition, tune management, user interface, and voice assistant.
 
-## 2. Data Acquisition & Logging
-- **Continuous OBD-II Data Logging**
-  - Capture engine RPM, speed, throttle, temperatures, fuel/air data, ignition timing, etc.
-- **GPS & Lap Timing Integration**
-  - Sync lap times and location data with ECU logs for performance analysis.
+## 1. Core System Architecture — partial
+- **done** Raspberry Pi 5 as central hub, connected to the car's OBD-II port for ECU data
+- **done** Interface with GPS and timing systems (`telemetry-logging`, `lap-timing`)
+- **done** Modular software design: separate modules for data acquisition, tune management, user interface and voice assistant
+- **todo** Interface with external sensors
+- **todo** Custom dashboard UI (web, served from the Pi); the HTTP API exists
+- **todo** Mobile app (iOS/Android, optional)
+- **todo** Voice assistant integration (custom or Alexa/Google, optional)
+- **planned, separate repo** [Companion app](docs/companion-app.md) for tunes, voice training data and local model updates
 
-## 3. Tune Management
-  - Implement “Race” and “Street” profiles.
-  - Allow instant switching via voice command, dashboard button, or mobile app.
-  - Analyze logged data to recommend or auto-adjust tunes for optimal performance or reliability.
-  - Store historical tune data for future reference.
- - **User Tune & Car Database**
-   - Allow users to save custom tunes and associate them with specific cars.
-   - Create a dedicated database for each car, storing all related tunes, settings, and performance logs.
-   - Enable easy retrieval, sharing, and management of tunes and car profiles through the dashboard or app.
+## 2. Data Acquisition & Logging — done
+- **done** Continuous OBD-II data logging: RPM, speed, throttle and temperatures (`telemetry-logging`). Fuel/air data and ignition timing PIDs are **todo**
+- **done** GPS & lap timing integration, synced with ECU logs (`lap-timing`)
 
-## 4. Real-Time Feedback & Copilot Interface
-- **Voice Assistant (Jarvis-Style)**
-  - Use text-to-speech to provide feedback on engine health, performance, and tune status.
-  - Respond to user queries and commands.
-- **Dashboard Display**
-  - Show live data, lap times, tune status, and alerts.
+## 3. Tune Management — partial
+- **done** "Race" and "Street" profiles (`tune-profiles`)
+- **done** Instant switching through one service for voice, dashboard and app (`tune-switching`). Switching is software-only; the GPIO map-switch (`live`) and engine-off flashing (`flash`) backends are **todo**
+- **done** Historical tune data: switch history, sessions tagged with the active tune
+- **done** User tune & car database: per-car library, save/retrieve/share via export and import (`tune-library`)
+- **done** Tune provenance, human approval and protected stock tune (tune safety #1, part 1)
+- **todo** Analyze logged data to **recommend** tunes. Advisory only: auto-adjusting tunes is excluded until tune safety (#1) is resolved
 
-## 5. Manual Override System
-- **Physical Controls**
-  - Install a dedicated override button or switch for manual tune selection.
-- **Voice Command Override**
-  - Allow users to override auto-tuning or recommendations by voice (e.g., “Jarvis, switch to race mode now”).
-- **Mobile App/Remote Access**
-  - Enable manual override and tune selection via a secure app interface.
+## 4. Real-Time Feedback & Copilot Interface — todo
+- **todo** Voice assistant (Jarvis-style): text-to-speech feedback on engine health, performance and tune status
+- **todo** Respond to user queries and commands
+- **todo** Dashboard display: live data, lap times, tune status, alerts
 
-## 6. Safety & Compliance
-- **Tune Validation**
-  - Ensure street tunes meet legal and safety requirements.
-  - Alert user if a selected tune is not compliant for street use.
+## 5. Manual Override System — todo
+- **todo** Physical controls: dedicated override button or switch for manual tune selection
+- **todo** Voice command override (e.g. "Jarvis, switch to race mode now")
+- **todo** Mobile app/remote access: manual override and tune selection via a **secure** app interface (needs API authentication)
 
-## 7. Data Analysis & Reporting
-- **Performance Reports**
-  - Generate post-session reports with lap times, engine stats, and tune effectiveness.
-- **Cloud Sync & Community Sharing**
-  - Optionally sync data and tunes to the cloud for backup and sharing.
+## 6. Safety & Compliance — blocked
+- **blocked** Tune validation: ensure street tunes meet legal and safety requirements, and alert the user if a selected tune is not street compliant. Needs tune content decoding (ECU definition / XDF), tracked in tune safety #1. `ComplianceChecker` reports "unknown" until then
 
-## 8. Extensibility & Future Features
-- **Plugin System**
-  - Allow third-party modules for new sensors, analytics, or UI enhancements.
-- **OTA Updates**
-  - Support over-the-air software and tune updates.
+## 7. Data Analysis & Reporting — todo
+- **todo** Performance reports: post-session reports with lap times, engine stats and tune effectiveness
+- **todo** Cloud sync & community sharing (optional). Downloaded tunes must enter as `imported` and need approval
+
+## 8. Extensibility & Future Features — todo
+- **partial** Plugin system: third-party modules for new sensors, analytics or UI enhancements (basic registry exists)
+- **todo** OTA updates: over-the-air software updates. Tunes are not updated OTA; they go through import and approval
