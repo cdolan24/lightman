@@ -62,6 +62,8 @@ Every car has a `race` and a `street` profile, and each can point at a tune from
 | `live` | Planned | Flips the ECU's map-switch input (e.g. from a GPIO pin) for instant switching while driving |
 | `flash` | Planned | Writes the full tune image. Only allowed when the engine is confirmed off (0 rpm); refused if the engine is running or rpm can't be read |
 
+> ⚠️ **Tune safety is an open issue.** Tune contents are not validated yet, there is no safety envelope, and AI-generated tunes need no human approval. See [docs/open-issues/tune-safety.md](docs/open-issues/tune-safety.md). This must be resolved before any `live`/`flash` backend or tune generation ships.
+
 ### HTTP API
 
 `python -m user_interface.dashboard` serves these endpoints on port 5000:
