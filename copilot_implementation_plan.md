@@ -39,13 +39,13 @@ Status key: **done** · **partial** · **todo** · **blocked** (with reason). Im
 - **done** Continuous OBD-II data logging: RPM, speed, throttle and temperatures (`telemetry-logging`). Fuel/air data and ignition timing PIDs are **todo**
 - **done** GPS & lap timing integration, synced with ECU logs (`lap-timing`)
 
-## 3. Tune Management — partial
+## 3. Tune Management — done (ECU backends beyond software are todo)
 - **done** "Race" and "Street" profiles (`tune-profiles`)
 - **done** Instant switching through one service for voice, dashboard and app (`tune-switching`). Switching is software-only; the GPIO map-switch (`live`) and engine-off flashing (`flash`) backends are **todo**
 - **done** Historical tune data: switch history, sessions tagged with the active tune
 - **done** User tune & car database: per-car library, save/retrieve/share via export and import (`tune-library`)
 - **done** Tune provenance, human approval and protected stock tune (tune safety #1, part 1)
-- **todo** Analyze logged data to **recommend** tunes. Advisory only: auto-adjusting tunes is excluded until tune safety (#1) is resolved
+- **done** Analyze live data to **recommend** profiles (`tune-recommendations`). Advisory only: auto-adjusting tunes is excluded until tune safety (#1) is resolved. Historical/ML analysis is **todo**
 
 ## 4. Real-Time Feedback & Copilot Interface — todo
 - **todo** Voice assistant (Jarvis-style): text-to-speech feedback on engine health, performance and tune status

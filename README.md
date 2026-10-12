@@ -86,6 +86,19 @@ Every car has a `race` and a `street` profile, and each can point at a tune from
 
 > ⚠️ **Tune safety is an open issue.** Approval, the `auto` restriction and the protected stock tune are in place, but tune contents are not validated and there is no safety envelope yet. See [docs/open-issues/tune-safety.md](docs/open-issues/tune-safety.md). The remaining items must be resolved before any `live`/`flash` backend or tune generation ships.
 
+### Recommendations (advisory)
+
+`Recommender` (`tune_management/recommender.py`) compares the latest live sample with the active profile and suggests a profile. It never switches tunes. The driver decides, and `auto` switching on recommendations is deliberately not implemented (tune safety #1). It returns nothing if the newest sample is older than `max_sample_age`.
+
+| Rule | When | Suggests |
+| --- | --- | --- |
+| `race_overheating` (warning) | On `race` with coolant ≥ `coolant_hot` (105 °C) | `street` |
+| `race_heat_soak` (warning) | On `race` with intake air ≥ `intake_heat_soak` (60 °C) | `street` |
+| `race_cold_engine` (info) | On `race` with coolant < `coolant_warm` (70 °C) | `street` |
+| `track_on_street` (info) | On `street` during a timed lap, with coolant and intake inside those limits | `race` |
+
+The limits (`DEFAULT_LIMITS`, plus `max_sample_age` = 10 s) can be overridden per `Recommender`.
+
 ### HTTP API
 
 `python -m user_interface.dashboard` serves these endpoints on port 5000:
@@ -100,6 +113,7 @@ Every car has a `race` and a `street` profile, and each can point at a tune from
 | `GET /api/cars/<id>/active` | | Active tune and profile |
 | `POST /api/cars/<id>/switch` | `{"source": "dashboard", "profile": "race"}` or `{"source": "app", "tune_id": 3}` | Switch tunes. `200` on success, `404` if the profile or tune is unknown, `409` if refused or the ECU failed (with `reason`) |
 | `POST /api/cars/<id>/revert` | `{"source": "voice"}` | Revert to the stock tune (`409` if there's no stock tune or it was refused) |
+| `GET /api/cars/<id>/recommendations` | | Current advisory recommendations (`rule`, `severity`, `suggested_profile`, `reason`, `values`) |
 | `GET /api/cars/<id>/history?limit=50` | | Switch history, newest first (`kind` is `switch` or `revert`) |
 
 > The API has no authentication yet, so anyone on the Pi's network can switch tunes. That is acceptable while switching is software-only, but authentication **must** be added before a `live` or `flash` backend ships.

@@ -5,6 +5,8 @@ from unittest import mock
 
 from flask import Flask
 
+from tune_management.car_database import connect_car_db, utc_now
+from tune_management.test_recommender import setup_car
 from tune_management.tune_manager import TuneManager
 from user_interface.api import api
 
@@ -92,6 +94,20 @@ class TestApprovalAPI(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json['active_tune_id'], stock)
         self.assertEqual(self.client.post('/api/cars/1/revert', json={}).status_code, 400)
+
+class TestRecommendationsAPI(unittest.TestCase):
+    def test_recommendations(self):
+        client = make_client()
+        self.assertEqual(client.get('/api/cars/1/recommendations').json, [])
+        setup_car(1, 'race')
+        conn = connect_car_db(1)
+        with conn:
+            session = conn.execute("INSERT INTO sessions (started_at) VALUES ('x')").lastrowid
+            conn.execute("INSERT INTO samples (session_id, wall_time, elapsed, coolant_temp) VALUES (?, ?, 0, 110)",
+                         (session, utc_now()))
+        conn.close()
+        (rec,) = client.get('/api/cars/1/recommendations').json
+        self.assertEqual((rec['rule'], rec['suggested_profile']), ('race_overheating', 'street'))
 
 class TestDashboardImport(unittest.TestCase):
     def test_import_does_not_touch_obd(self):

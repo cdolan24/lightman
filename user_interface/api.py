@@ -5,6 +5,7 @@ from dataclasses import asdict
 from flask import Blueprint, current_app, jsonify, request
 
 from tune_management.profiles import ProfileManager, UnknownProfile
+from tune_management.recommender import Recommender
 from tune_management.tune_manager import ApprovalRefused, TuneManager, TuneNotApproved, TuneNotFound
 from tune_management.tune_switcher import SOURCES, TuneSwitcher
 
@@ -78,6 +79,11 @@ def revert(car_id):
 def _switch_response(result):
     status = {None: 200, 'not_found': 404}.get(result.error, 409)
     return jsonify(asdict(result)), status
+
+@api.get('/recommendations')
+def recommendations(car_id):
+    # Advisory only: the client shows these to the driver; nothing is switched here.
+    return jsonify([asdict(r) for r in Recommender(car_id).recommend()])
 
 @api.get('/history')
 def history(car_id):
