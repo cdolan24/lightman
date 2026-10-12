@@ -9,7 +9,9 @@ from data_acquisition.test_lap_timer import LINE, pos
 from data_acquisition.test_obd_reader import FakeConnection
 from data_acquisition.obd_reader import OBDReader
 from tune_management.car_database import get_db_path
+from tune_management.profiles import ProfileManager
 from tune_management.tune_manager import TuneManager
+from tune_management.tune_switcher import TuneSwitcher
 
 class FakeClock:
     def __init__(self):
@@ -79,6 +81,16 @@ class TestDataLogger(unittest.TestCase):
         logger.stop()
         (session,) = query(2, "SELECT * FROM sessions")
         self.assertIsNone(session['tune_id'])
+
+    def test_session_defaults_to_active_tune(self):
+        race = TuneManager(11).save_tune("Race", b"r")
+        ProfileManager(11).assign('race', race)
+        TuneSwitcher(11).switch('manual', profile='race')
+        logger, _ = self.make_logger(11)
+        logger.start()
+        logger.stop()
+        (session,) = query(11, "SELECT * FROM sessions")
+        self.assertEqual(session['tune_id'], race)
 
     def test_samples_at_rate(self):
         logger, _ = self.make_logger(3, rate_hz=2)

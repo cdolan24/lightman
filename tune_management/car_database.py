@@ -7,6 +7,8 @@ from pathlib import Path
 # Read at call time so tests (or a deployment) can point it elsewhere.
 DB_ROOT = Path(os.environ.get('LIGHTMAN_DB_ROOT', 'car_databases'))
 
+DEFAULT_PROFILES = ('race', 'street')
+
 def get_db_path(car_id):
     """Return the path for a car's database file."""
     return Path(DB_ROOT) / f"car_{car_id}.db"
@@ -73,8 +75,52 @@ def init_car_db(car_id):
             FOREIGN KEY(session_id) REFERENCES sessions(id)
         )
     ''')
+    # Columns added after the original tunes schema; migrate older databases in place.
+    tune_columns = {row[1] for row in c.execute("PRAGMA table_info(tunes)")}
+    for column in ('notes', 'deleted_at'):
+        if column not in tune_columns:
+            c.execute(f"ALTER TABLE tunes ADD COLUMN {column} TEXT")
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS profiles (
+            name TEXT PRIMARY KEY,
+            tune_id INTEGER,
+            FOREIGN KEY(tune_id) REFERENCES tunes(id)
+        )
+    ''')
+    c.executemany("INSERT OR IGNORE INTO profiles (name) VALUES (?)", [(p,) for p in DEFAULT_PROFILES])
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS car_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            active_tune_id INTEGER,
+            active_profile TEXT,
+            updated_at TEXT,
+            FOREIGN KEY(active_tune_id) REFERENCES tunes(id)
+        )
+    ''')
+    c.execute("INSERT OR IGNORE INTO car_state (id) VALUES (1)")
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS tune_switches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            source TEXT NOT NULL,
+            requested_profile TEXT,
+            requested_tune_id INTEGER,
+            from_tune_id INTEGER,
+            to_tune_id INTEGER,
+            method TEXT,
+            success INTEGER NOT NULL,
+            reason TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
+
+def connect_car_db(car_id):
+    """Initialize (if needed) and open a car's database with rows accessible by column name."""
+    init_car_db(car_id)
+    conn = sqlite3.connect(get_db_path(car_id), timeout=5)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 if __name__ == "__main__":
     # Example: Initialize DB for car with ID 1

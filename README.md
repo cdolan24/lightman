@@ -48,6 +48,36 @@ Each session writes to the `sessions`, `samples` (RPM, speed, throttle, coolant/
 
 Set `LIGHTMAN_DB_ROOT` to store car databases somewhere other than `./car_databases`.
 
+## Tunes, Profiles and Switching
+
+Each car's library holds its tunes. In `TuneManager` you can save, get, rename and delete them. Deleted tunes are hidden but kept, so old sessions still resolve the tune they ran. To share a tune, export it to a portable `.lmtune` file and import it into another car.
+
+Every car has a `race` and a `street` profile, and each can point at a tune from that car's library (`ProfileManager`). All switching goes through `TuneSwitcher.switch(source, profile=... | tune_id=...)`, where `source` is one of `voice`, `dashboard`, `app`, `manual` or `auto`. The active tune persists across restarts. Every attempt is recorded in the `tune_switches` history, including refused ones, and new logging sessions are tagged with the active tune by default.
+
+**ECU backends.** A switch is applied through an ECU backend (`tune_management/ecu_backend.py`), and the backend's method is reported with every result:
+
+| Method | Status | Behaviour |
+| --- | --- | --- |
+| `software` | Default | Records the selection only and does not communicate with the ECU. This keeps Lightman plug-and-play via OBD-II |
+| `live` | Planned | Flips the ECU's map-switch input (e.g. from a GPIO pin) for instant switching while driving |
+| `flash` | Planned | Writes the full tune image. Only allowed when the engine is confirmed off (0 rpm); refused if the engine is running or rpm can't be read |
+
+### HTTP API
+
+`python -m user_interface.dashboard` serves these endpoints on port 5000:
+
+| Method & path | Body | Description |
+| --- | --- | --- |
+| `GET /api/obd` | | Live OBD-II readings |
+| `GET /api/cars/<id>/tunes` | | The car's tune library |
+| `GET /api/cars/<id>/profiles` | | Profiles and their assigned tunes |
+| `PUT /api/cars/<id>/profiles/<name>` | `{"tune_id": 3}` | Assign a tune to a profile |
+| `GET /api/cars/<id>/active` | | Active tune and profile |
+| `POST /api/cars/<id>/switch` | `{"source": "dashboard", "profile": "race"}` or `{"source": "app", "tune_id": 3}` | Switch tunes. `200` on success, `404` if the profile or tune is unknown, `409` if refused or the ECU failed (with `reason`) |
+| `GET /api/cars/<id>/history?limit=50` | | Switch history, newest first |
+
+> The API has no authentication yet, so anyone on the Pi's network can switch tunes. That is acceptable while switching is software-only, but authentication **must** be added before a `live` or `flash` backend ships.
+
 ## Notes
 - Each car has a dedicated database for tunes and logs.
 - Designed for extensibility and future features.

@@ -35,8 +35,11 @@ class DataLogger:
         self._conn = None
 
     def start(self, tune_id=None):
+        """Open a session tagged with tune_id, or with the car's active tune when none is given."""
         init_car_db(self.car_id)
         self._conn = sqlite3.connect(get_db_path(self.car_id))
+        if tune_id is None:
+            tune_id = self._conn.execute("SELECT active_tune_id FROM car_state").fetchone()[0]
         cur = self._conn.execute(
             "INSERT INTO sessions (tune_id, started_at) VALUES (?, ?)", (tune_id, self.wall_clock()))
         self._conn.commit()
@@ -108,7 +111,7 @@ def _parse_line(text):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Log OBD-II and GPS data for a driving session.")
     parser.add_argument('--car-id', type=int, required=True, help="car whose database receives the session")
-    parser.add_argument('--tune-id', type=int, help="active tune to tag the session with")
+    parser.add_argument('--tune-id', type=int, help="tune to tag the session with (default: the car's active tune)")
     parser.add_argument('--rate', type=float, default=1.0, help="samples per second (default 1)")
     parser.add_argument('--duration', type=float, help="stop after this many seconds (default: until Ctrl+C)")
     parser.add_argument('--obd-port', help="OBD-II adapter port (default: auto-detect)")
