@@ -152,10 +152,24 @@ The same server provides these endpoints:
 | `GET /api/cars/<id>/active` | | Active tune and profile |
 | `POST /api/cars/<id>/switch` | `{"source": "dashboard", "profile": "race"}` or `{"source": "app", "tune_id": 3}` | Switch tunes. `200` on success, `404` if the profile or tune is unknown, `409` if refused or the ECU failed (with `reason`) |
 | `POST /api/cars/<id>/revert` | `{"source": "voice"}` | Revert to the stock tune (`409` if there's no stock tune or it was refused) |
+| `GET /api/cars/<id>/sessions` | | Sessions, newest first, with duration, starting tune and lap count |
+| `GET /api/cars/<id>/sessions/<sid>/report` | | Session report: laps (with tune), best, average, consistency and engine stats. `404` if the session is unknown |
+| `GET /api/cars/<id>/tune-comparison` | | Best and average lap per tune, grouped by track (start/finish line) |
 | `GET /api/cars/<id>/recommendations` | | Current advisory recommendations (`rule`, `severity`, `suggested_profile`, `reason`, `values`) |
 | `GET /api/cars/<id>/history?limit=50` | | Switch history, newest first (`kind` is `switch` or `revert`) |
 
 > The API has no authentication yet, so anyone on the Pi's network can switch tunes. That is acceptable while switching is software-only, but authentication **must** be added before a `live` or `flash` backend ships.
+
+## Performance Reports
+
+```
+python -m tune_management.performance_report --car-id 1               # list sessions
+python -m tune_management.performance_report --car-id 1 --session 12  # one session's report
+python -m tune_management.performance_report --car-id 1 --compare     # tune comparison per track
+```
+
+- **Session report:** every lap with the tune it was driven on, plus best, average and consistency (standard deviation). Engine stats: max rpm and speed, max and average coolant, max intake air, and fuel used.
+- **Tune comparison:** only compares laps on the **same start/finish line**, so lap times from different tracks are never mixed. Each lap is credited to the tune active when it finished. Laps recorded before tune attribution existed are left out.
 
 ## Spoken Copilot Feedback
 

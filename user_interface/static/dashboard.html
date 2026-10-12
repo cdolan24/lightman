@@ -112,6 +112,7 @@ function el(tag, text, className) {
 }
 function lapTime(seconds) {
   if (seconds == null) return '—';
+  seconds = Math.round(seconds * 10) / 10;   // round first, or 59.96 becomes "0:60.0"
   const m = Math.floor(seconds / 60), s = seconds - m * 60;
   return `${m}:${s.toFixed(1).padStart(4, '0')}`;
 }

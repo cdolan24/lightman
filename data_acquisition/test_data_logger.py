@@ -1,5 +1,6 @@
 # test_data_logger.py
 
+import json
 import sqlite3
 import unittest
 
@@ -149,6 +150,37 @@ class TestDataLogger(unittest.TestCase):
         # GPS time mapped onto session elapsed time via the first fix (t=0 at elapsed 0).
         self.assertAlmostEqual(lap['start_elapsed'], 10.0, places=3)
         self.assertAlmostEqual(lap['end_elapsed'], 100.0, places=3)
+
+class TestLapAttribution(unittest.TestCase):
+    def test_tune_changed_mid_session_and_line_recorded(self):
+        tm = TuneManager(30)
+        street, race = tm.save_tune("Street", b"s"), tm.save_tune("Race", b"r")
+        switcher = TuneSwitcher(30)
+        switcher.switch('manual', tune_id=street)
+        loop_back = lambda t: [fix(t + 1, 10, 30), fix(t + 1.5, -10, 30)]
+        gps = FakeGPS([
+            [fix(9.5, -10), fix(10.5, 10)] + loop_back(10),
+            [fix(99.5, -10), fix(100.5, 10)] + loop_back(100),
+            [fix(189.5, -10), fix(190.5, 10)] + loop_back(190),
+        ])
+        clock = FakeClock()
+        logger = DataLogger(30, FixedReader(READING), gps=gps, lap_line=LINE, clock=clock, sleep=clock.sleep)
+        logger.start()
+        logger.tick()                       # lap 1 starts
+        logger.tick()                       # lap 1 completes on street
+        switcher.switch('manual', tune_id=race)
+        logger.tick()                       # lap 2 completes on race
+        logger.stop()
+        self.assertEqual([(r['lap_number'], r['tune_id']) for r in query(30, "SELECT * FROM laps ORDER BY id")],
+                         [(1, street), (2, race)])
+        (session,) = query(30, "SELECT lap_line FROM sessions")
+        self.assertEqual(json.loads(session['lap_line']), [*LINE[0], *LINE[1]])
+
+    def test_no_line_without_lap_timing(self):
+        logger = DataLogger(31, FixedReader(READING))
+        logger.start()
+        logger.stop()
+        self.assertIsNone(query(31, "SELECT lap_line FROM sessions")[0]['lap_line'])
 
 class TestStopAndStale(unittest.TestCase):
     def test_run_stops_on_event(self):

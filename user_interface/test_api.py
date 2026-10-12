@@ -160,6 +160,20 @@ class TestDashboardPage(unittest.TestCase):
         for path in paths:
             self.assertIn('/api/cars/<int:car_id>' + path, rules)
 
+class TestReportsAPI(unittest.TestCase):
+    def test_sessions_report_and_comparison(self):
+        from tune_management.test_performance_report import TRACK_A, add_session
+        race = TuneManager(1).save_tune("Race", b"r")
+        sid = add_session(tune_id=race, line=TRACK_A, laps=[(95.0, race), (92.0, race)])
+        client = make_client()
+        (session,) = client.get('/api/cars/1/sessions').json
+        self.assertEqual((session['id'], session['lap_count']), (sid, 2))
+        report = client.get(f'/api/cars/1/sessions/{sid}/report').json
+        self.assertEqual(report['best_lap']['duration'], 92.0)
+        self.assertEqual(client.get('/api/cars/1/sessions/999/report').status_code, 404)
+        (track,) = client.get('/api/cars/1/tune-comparison').json
+        self.assertEqual((track['line'], track['tunes'][0]['best_lap']), (TRACK_A, 92.0))
+
 class TestCreateApp(unittest.TestCase):
     def test_factory_app(self):
         from user_interface.dashboard import create_app

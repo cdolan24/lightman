@@ -138,6 +138,8 @@ def init_car_db(car_id):
         )
     ''')
     _add_columns(c, 'tune_switches', {'kind': "TEXT NOT NULL DEFAULT 'switch'"})
+    _add_columns(c, 'laps', {'tune_id': 'INTEGER'})          # tune active when the lap completed
+    _add_columns(c, 'sessions', {'lap_line': 'TEXT'})        # JSON [lat1, lon1, lat2, lon2]; identifies the track
     conn.commit()
     conn.close()
     _initialized.add(Path(db_path).resolve())

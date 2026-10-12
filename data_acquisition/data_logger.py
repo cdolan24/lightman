@@ -1,6 +1,7 @@
 # data_logger.py
 
 import argparse
+import json
 import time
 from datetime import datetime, timezone
 
@@ -35,8 +36,9 @@ class DataLogger:
         self._conn = connect_car_db(self.car_id)
         if tune_id is None:
             tune_id = self._conn.execute("SELECT active_tune_id FROM car_state").fetchone()[0]
-        cur = self._conn.execute(
-            "INSERT INTO sessions (tune_id, started_at) VALUES (?, ?)", (tune_id, self.wall_clock()))
+        lap_line = json.dumps([*self.lap_line[0], *self.lap_line[1]]) if self.lap_line else None
+        cur = self._conn.execute("INSERT INTO sessions (tune_id, started_at, lap_line) VALUES (?, ?, ?)",
+                                 (tune_id, self.wall_clock(), lap_line))
         self._conn.commit()
         self.session_id = cur.lastrowid
         self._started = self.clock()
@@ -54,11 +56,12 @@ class DataLogger:
             for fix in fixes:
                 lap = self.lap_timer.update(fix.time, fix.latitude, fix.longitude)
                 if lap:
+                    active_tune = self._conn.execute("SELECT active_tune_id FROM car_state").fetchone()[0]
                     self._conn.execute(
-                        "INSERT INTO laps (session_id, lap_number, start_elapsed, end_elapsed, duration) "
-                        "VALUES (?, ?, ?, ?, ?)",
+                        "INSERT INTO laps (session_id, lap_number, start_elapsed, end_elapsed, duration, tune_id) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
                         (self.session_id, lap.lap_number, lap.start + self._gps_offset,
-                         lap.end + self._gps_offset, lap.duration))
+                         lap.end + self._gps_offset, lap.duration, active_tune))
 
         fix = self.gps.latest_fix if self.gps else None
         sample = {

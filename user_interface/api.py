@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, request
 
 from tune_management.car_database import connect_car_db
+from tune_management.performance_report import SessionNotFound, list_sessions, session_report, tune_comparison
 from tune_management.profiles import ProfileManager, UnknownProfile
 from tune_management.recommender import Recommender
 from tune_management.tune_manager import ApprovalRefused, TuneManager, TuneNotApproved, TuneNotFound
@@ -104,6 +105,21 @@ def live(car_id):
     best = min(laps, key=lambda lap: lap['duration']) if laps else None
     return jsonify(session=dict(session), sample=sample, laps=laps,
                    best_lap=best['lap_number'] if best else None)
+
+@api.get('/sessions')
+def sessions(car_id):
+    return jsonify(list_sessions(car_id))
+
+@api.get('/sessions/<int:session_id>/report')
+def report(car_id, session_id):
+    try:
+        return jsonify(session_report(car_id, session_id))
+    except SessionNotFound as e:
+        return _error(404, str(e))
+
+@api.get('/tune-comparison')
+def compare_tunes(car_id):
+    return jsonify(tune_comparison(car_id))
 
 @api.get('/recommendations')
 def recommendations(car_id):

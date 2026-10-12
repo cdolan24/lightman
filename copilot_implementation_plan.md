@@ -61,8 +61,8 @@ Status key: **done** · **partial** · **todo** · **blocked** (with reason). Im
 ## 6. Safety & Compliance — blocked
 - **blocked** Tune validation: ensure street tunes meet legal and safety requirements, and alert the user if a selected tune is not street compliant. Needs tune content decoding (ECU definition / XDF), tracked in tune safety #1. `ComplianceChecker` reports "unknown" until then
 
-## 7. Data Analysis & Reporting — todo
-- **todo** Performance reports: post-session reports with lap times, engine stats and tune effectiveness
+## 7. Data Analysis & Reporting — partial
+- **done** Performance reports: post-session reports with lap times, engine stats and tune effectiveness per track (`performance-reports`)
 - **todo** Cloud sync & community sharing (optional). Downloaded tunes must enter as `imported` and need approval
 
 ## 8. Extensibility & Future Features — todo
