@@ -1,0 +1,32 @@
+# Lightman configuration. Copy to /etc/lightman.toml (the install script does this).
+# Every setting is optional; the values shown are the defaults.
+
+car_id = 1                      # which car's database to use
+db_root = "car_databases"       # where car databases live (relative to the install directory)
+
+[obd]
+port = ""                       # OBD-II adapter port, e.g. "/dev/ttyUSB0" or "/dev/rfcomm0"; "" = auto-detect
+timeout = 30.0                  # seconds to wait for the adapter before logging without engine data
+
+[logging]
+rate = 1.0                      # samples per second (about 2 is the practical max over an ELM327)
+
+[gps]
+port = ""                       # NMEA GPS receiver, e.g. "/dev/ttyACM0"; "" = no GPS
+baud = 9600
+
+[lap_timing]
+line = []                       # start/finish line [lat1, lon1, lat2, lon2]; needs gps.port
+min_lap_time = 10.0             # ignore line crossings closer together than this (seconds)
+
+[dashboard]
+host = "0.0.0.0"                # "127.0.0.1" to only allow a screen attached to the Pi
+port = 5000
+
+[voice]
+enabled = true                  # spoken copilot feedback
+
+[override]
+pin = -1                        # BCM GPIO pin of a physical button/switch (wired to GND); -1 = none
+mode = "button"                 # "button": short press toggles street/race, long press = stock; "switch": on = race
+long_press = 2.0                # seconds to hold the button for revert to stock

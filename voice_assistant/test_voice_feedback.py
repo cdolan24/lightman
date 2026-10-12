@@ -1,8 +1,12 @@
 # test_voice_feedback.py
 
 import unittest
+
+import pytest
+
 from voice_assistant.voice_feedback import VoiceAssistant
 
+@pytest.mark.hardware
 class TestVoiceAssistant(unittest.TestCase):
     def test_speak(self):
         va = VoiceAssistant()

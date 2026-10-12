@@ -1,0 +1,42 @@
+schema: spec-driven
+
+context: |
+  Lightman runs on a Raspberry Pi 5 plugged into a car's OBD-II port and must stay drag-and-drop:
+  no hardwiring into the ECU, no desktop/GUI dependencies on the Pi. Tune authoring, voice training
+  data and local model updates belong to a separate companion app (docs/companion-app.md), not this repo.
+  Tune safety (GitHub #1, docs/open-issues/tune-safety.md) gates features: recommendations are advisory
+  only; auto may only select profiles; voice/auto never approve tunes; no live/flash ECU backend or tune
+  generation until validation, safety envelope and API authentication exist.
+  All behaviour must be testable without hardware (inject connections/clocks); hardware tests are
+  marked @pytest.mark.hardware.
+
+# Project context (optional)
+# Add only constraints that should guide OpenSpec artifacts and workflows.
+# Include constraints an agent cannot infer by reading the code.
+# Keep general project documentation and discoverable codebase facts out.
+# Example:
+#   context: |
+#     Designs and tasks must cover Windows, macOS, and Linux
+#     Write all artifacts in Spanish
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

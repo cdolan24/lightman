@@ -1,0 +1,225 @@
+# test_data_logger.py
+
+import json
+import sqlite3
+import unittest
+
+import threading
+
+from datetime import datetime, timedelta, timezone
+
+from data_acquisition.data_logger import DataLogger, close_stale_sessions, sampled_engine_rpm
+from data_acquisition.gps_reader import GPSFix
+from data_acquisition.test_lap_timer import LINE, pos
+from data_acquisition.test_obd_reader import FakeConnection
+from data_acquisition.obd_reader import OBDReader
+from tune_management.car_database import get_db_path
+from tune_management.profiles import ProfileManager
+from tune_management.tune_manager import TuneManager
+from tune_management.tune_switcher import TuneSwitcher
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+class FakeGPS:
+    """Hands out one queued batch of fixes per poll()."""
+    def __init__(self, batches):
+        self.batches = list(batches)
+        self.latest_fix = None
+
+    def poll(self):
+        fixes = self.batches.pop(0) if self.batches else []
+        if fixes:
+            self.latest_fix = fixes[-1]
+        return fixes
+
+class FixedReader:
+    def __init__(self, data):
+        self.data = data
+
+    def get_basic_data(self):
+        return dict(self.data)
+
+READING = {'rpm': 3000.0, 'speed': 80.0, 'throttle_pos': 40.0,
+           'coolant_temp': 90.0, 'intake_temp': 30.0, 'fuel_level': None}
+
+def fix(t, north_m, east_m=0):
+    lat, lon = pos(north_m, east_m)
+    return GPSFix(time=1_700_000_000 + t, latitude=lat, longitude=lon, speed=100.0)
+
+def query(car_id, sql):
+    conn = sqlite3.connect(get_db_path(car_id))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(sql).fetchall()
+    conn.close()
+    return rows
+
+class TestDataLogger(unittest.TestCase):
+    def make_logger(self, car_id, reader=None, **kwargs):
+        clock = FakeClock()
+        logger = DataLogger(car_id, reader or FixedReader(READING), clock=clock, sleep=clock.sleep, **kwargs)
+        return logger, clock
+
+    def test_session_with_tune(self):
+        tm = TuneManager(1)
+        tm.save_tune("Street", b"x")
+        tune_id = tm.list_tunes()[0][0]
+        logger, _ = self.make_logger(1)
+        session_id = logger.start(tune_id=tune_id)
+        logger.tick()
+        logger.stop()
+        (session,) = query(1, "SELECT * FROM sessions")
+        self.assertEqual((session['id'], session['tune_id']), (session_id, tune_id))
+        self.assertIsNotNone(session['started_at'])
+        self.assertIsNotNone(session['ended_at'])
+
+    def test_session_without_tune(self):
+        logger, _ = self.make_logger(2)
+        logger.start()
+        logger.stop()
+        (session,) = query(2, "SELECT * FROM sessions")
+        self.assertIsNone(session['tune_id'])
+
+    def test_session_defaults_to_active_tune(self):
+        race = TuneManager(11).save_tune("Race", b"r")
+        ProfileManager(11).assign('race', race)
+        TuneSwitcher(11).switch('manual', profile='race')
+        logger, _ = self.make_logger(11)
+        logger.start()
+        logger.stop()
+        (session,) = query(11, "SELECT * FROM sessions")
+        self.assertEqual(session['tune_id'], race)
+
+    def test_samples_at_rate(self):
+        logger, _ = self.make_logger(3, rate_hz=2)
+        logger.run(duration=5)
+        samples = query(3, "SELECT * FROM samples ORDER BY id")
+        self.assertEqual(len(samples), 10)
+        self.assertEqual([s['elapsed'] for s in samples[:3]], [0.0, 0.5, 1.0])
+        self.assertEqual(samples[0]['rpm'], 3000.0)
+        self.assertIsNone(samples[0]['fuel_level'])
+        # No GPS configured: position and lap are null.
+        self.assertIsNone(samples[0]['latitude'])
+        self.assertIsNone(samples[0]['lap_number'])
+
+    def test_disconnected_adapter_still_logs(self):
+        reader = OBDReader(connection=FakeConnection(raises=True))
+        logger, _ = self.make_logger(4, reader=reader)
+        logger.run(duration=3)
+        samples = query(4, "SELECT * FROM samples")
+        self.assertEqual(len(samples), 3)
+        self.assertTrue(all(s['rpm'] is None for s in samples))
+
+    def test_gps_position_and_no_fix(self):
+        gps = FakeGPS([[], [fix(0, -50)]])
+        logger, clock = self.make_logger(5, gps=gps)
+        logger.start()
+        first = logger.tick()
+        clock.now += 1
+        second = logger.tick()
+        logger.stop()
+        self.assertIsNone(first['latitude'])
+        self.assertAlmostEqual(second['latitude'], pos(-50, 0)[0])
+        self.assertEqual(second['gps_speed'], 100.0)
+
+    def test_laps_recorded_and_samples_tagged(self):
+        loop_back = lambda t: [fix(t + 1, 10, 30), fix(t + 1.5, -10, 30)]
+        gps = FakeGPS([
+            [fix(0, -50)],                                    # out-lap
+            [fix(9.5, -10), fix(10.5, 10)] + loop_back(10),   # crossing at t=10 -> lap 1
+            [fix(99.5, -10), fix(100.5, 10)] + loop_back(100),  # crossing at t=100 -> lap 2
+        ])
+        logger, clock = self.make_logger(6, gps=gps, lap_line=LINE)
+        logger.start()
+        lap_numbers = []
+        for elapsed in (0, 12, 102):
+            clock.now = elapsed
+            lap_numbers.append(logger.tick()['lap_number'])
+        logger.stop()
+        self.assertEqual(lap_numbers, [None, 1, 2])
+        (lap,) = query(6, "SELECT * FROM laps")
+        self.assertEqual(lap['lap_number'], 1)
+        self.assertAlmostEqual(lap['duration'], 90.0, places=3)
+        # GPS time mapped onto session elapsed time via the first fix (t=0 at elapsed 0).
+        self.assertAlmostEqual(lap['start_elapsed'], 10.0, places=3)
+        self.assertAlmostEqual(lap['end_elapsed'], 100.0, places=3)
+
+class TestLapAttribution(unittest.TestCase):
+    def test_tune_changed_mid_session_and_line_recorded(self):
+        tm = TuneManager(30)
+        street, race = tm.save_tune("Street", b"s"), tm.save_tune("Race", b"r")
+        switcher = TuneSwitcher(30)
+        switcher.switch('manual', tune_id=street)
+        loop_back = lambda t: [fix(t + 1, 10, 30), fix(t + 1.5, -10, 30)]
+        gps = FakeGPS([
+            [fix(9.5, -10), fix(10.5, 10)] + loop_back(10),
+            [fix(99.5, -10), fix(100.5, 10)] + loop_back(100),
+            [fix(189.5, -10), fix(190.5, 10)] + loop_back(190),
+        ])
+        clock = FakeClock()
+        logger = DataLogger(30, FixedReader(READING), gps=gps, lap_line=LINE, clock=clock, sleep=clock.sleep)
+        logger.start()
+        logger.tick()                       # lap 1 starts
+        logger.tick()                       # lap 1 completes on street
+        switcher.switch('manual', tune_id=race)
+        logger.tick()                       # lap 2 completes on race
+        logger.stop()
+        self.assertEqual([(r['lap_number'], r['tune_id']) for r in query(30, "SELECT * FROM laps ORDER BY id")],
+                         [(1, street), (2, race)])
+        (session,) = query(30, "SELECT lap_line FROM sessions")
+        self.assertEqual(json.loads(session['lap_line']), [*LINE[0], *LINE[1]])
+
+    def test_no_line_without_lap_timing(self):
+        logger = DataLogger(31, FixedReader(READING))
+        logger.start()
+        logger.stop()
+        self.assertIsNone(query(31, "SELECT lap_line FROM sessions")[0]['lap_line'])
+
+class TestStopAndStale(unittest.TestCase):
+    def test_run_stops_on_event(self):
+        stop = threading.Event()
+        logger = DataLogger(20, FixedReader(READING), rate_hz=20)
+        thread = threading.Thread(target=logger.run, kwargs={'stop_event': stop})
+        thread.start()
+        stop.wait(0.3)  # let it take a few samples
+        stop.set()
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        (session,) = query(20, "SELECT * FROM sessions")
+        self.assertIsNotNone(session['ended_at'])
+        self.assertGreater(len(query(20, "SELECT * FROM samples")), 0)
+
+    def test_close_stale_sessions(self):
+        logger = DataLogger(21, FixedReader(READING), wall_clock=lambda: "2026-10-12T10:00:00+00:00")
+        logger.start()
+        logger.tick()
+        logger._conn.close()                     # simulate power loss: never stopped
+        empty = DataLogger(21, FixedReader(READING), wall_clock=lambda: "2026-10-12T11:00:00+00:00")
+        empty.start()
+        empty._conn.close()
+        self.assertEqual(close_stale_sessions(21), 2)
+        rows = query(21, "SELECT started_at, ended_at FROM sessions ORDER BY id")
+        self.assertEqual([r['ended_at'] for r in rows], ["2026-10-12T10:00:00+00:00", "2026-10-12T11:00:00+00:00"])
+        self.assertEqual(close_stale_sessions(21), 0)
+
+class TestSampledEngineRpm(unittest.TestCase):
+    def test_fresh_stale_absent(self):
+        self.assertIsNone(sampled_engine_rpm(22))
+        t0 = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
+        logger = DataLogger(22, FixedReader({**READING, 'rpm': 0.0}), wall_clock=lambda: t0.isoformat())
+        logger.start()
+        logger.tick()
+        self.assertEqual(sampled_engine_rpm(22, now=t0 + timedelta(seconds=1)), 0.0)
+        self.assertIsNone(sampled_engine_rpm(22, now=t0 + timedelta(seconds=10)))
+        logger.stop()
+        self.assertIsNone(sampled_engine_rpm(22, now=t0 + timedelta(seconds=1)))  # session closed
+
+if __name__ == "__main__":
+    unittest.main()

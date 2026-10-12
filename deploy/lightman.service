@@ -1,0 +1,18 @@
+# Rendered and installed by deploy/install.sh (@INSTALL_DIR@ and @USER@ are filled in).
+[Unit]
+Description=Lightman car copilot
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@INSTALL_DIR@
+ExecStart=@INSTALL_DIR@/.venv/bin/python -m lightman --config /etc/lightman.toml
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
