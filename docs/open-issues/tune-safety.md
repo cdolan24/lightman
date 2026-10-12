@@ -1,6 +1,6 @@
 # Open issue: Tune safety safeguards
 
-**Status:** Open. This must be resolved before any `live` or `flash` ECU backend ships, and before Lightman generates or recommends tunes.
+**Status:** Open ([GitHub #1](https://github.com/cdolan24/lightman/issues/1)). This must be resolved before any `live` or `flash` ECU backend ships, and before Lightman generates or recommends tunes.
 
 ## Problem
 
