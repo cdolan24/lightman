@@ -53,8 +53,8 @@ Status key: **done** · **partial** · **todo** · **blocked** (with reason). Im
 - **todo** Respond to user queries and commands
 - **done** Dashboard display: live data, lap times, tune status, alerts (`live-dashboard`)
 
-## 5. Manual Override System — todo
-- **todo** Physical controls: dedicated override button or switch for manual tune selection
+## 5. Manual Override System — partial
+- **done** Physical controls: dedicated override button or switch for manual tune selection (`manual-override`)
 - **todo** Voice command override (e.g. "Jarvis, switch to race mode now")
 - **todo** Mobile app/remote access: manual override and tune selection via a **secure** app interface (needs API authentication)
 

@@ -47,6 +47,9 @@ enabled = false
     ('[lap_timing]\nline = [1, 2, 3]', "lap_timing.line"),
     ('[gps]\nport = ""\n[lap_timing]\nline = [1, 2, 3, 4]', "lap_timing.line"),
     ('[dashboard]\nport = 70000', "dashboard.port"),
+    ('[override]\npin = 40', "override.pin"),
+    ('[override]\nmode = "dial"', "override.mode"),
+    ('[override]\nlong_press = 0.1', "override.long_press"),
 ])
 def test_errors_name_the_setting(tmp_path, text, key):
     with pytest.raises(ConfigError, match=f"'{key}'"):

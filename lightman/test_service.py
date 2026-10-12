@@ -1,10 +1,12 @@
 # test_service.py
 
+import builtins
 import json
 import threading
 import time
 import unittest
 import urllib.request
+from unittest import mock
 
 import obd
 
@@ -13,6 +15,8 @@ from lightman.config import DEFAULTS, load_config
 from lightman.service import LightmanService, supervise
 from tune_management import car_database
 from tune_management.car_database import connect_car_db
+from tune_management.profiles import ProfileManager
+from tune_management.tune_manager import TuneManager
 
 def wait_for(predicate, timeout=5.0):
     deadline = time.monotonic() + timeout
@@ -105,6 +109,33 @@ class TestService(unittest.TestCase):
         self.start()
         first = rows("SELECT ended_at FROM sessions ORDER BY id")[0]
         self.assertEqual(first['ended_at'], '2026-10-11T10:00:00+00:00')
+
+class TestOverrideInService(TestService):
+    def test_default_has_no_override(self):
+        self.assertIsNone(self.start().override_device)
+
+    def test_configured_button(self):
+        from gpiozero.pins.mock import MockFactory
+        ProfileManager(1).assign('street', TuneManager(1).save_tune("Street", b"s"))
+        factory = MockFactory()
+        self.addCleanup(factory.close)
+        service = self.start(make_config(override={'pin': 17}), gpio_pin_factory=factory)
+        self.assertIsNotNone(service.override_device)
+        pin = factory.pin(17)
+        pin.drive_low(); time.sleep(0.06); pin.drive_high()      # short press
+        self.assertTrue(wait_for(lambda: rows("SELECT active_profile FROM car_state")[0][0] == 'street'))
+
+    def test_unavailable_gpio_degrades(self):
+        real_import = builtins.__import__
+        def no_gpiozero(name, *args, **kwargs):
+            if name == 'gpiozero':
+                raise ImportError("No module named 'gpiozero'")
+            return real_import(name, *args, **kwargs)
+        with mock.patch('builtins.__import__', no_gpiozero), self.assertLogs('lightman', level='ERROR') as logs:
+            service = self.start(make_config(override={'pin': 17}))
+        self.assertIsNone(service.override_device)
+        self.assertIn("override disabled", "\n".join(logs.output))
+        self.assertTrue(wait_for(lambda: rows("SELECT * FROM samples")))
 
 class TestSupervise(unittest.TestCase):
     def test_restarts_crashing_component(self):

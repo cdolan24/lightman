@@ -15,12 +15,14 @@ if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
     exit 1
 fi
 
-# venv support, and espeak for text-to-speech (voice is optional: Lightman runs without it).
+# venv support, espeak for text-to-speech, and GPIO for the physical override (Pi 5 needs lgpio).
+# Voice and the override are optional: Lightman runs without them.
 sudo apt-get update
-sudo apt-get install -y python3-venv espeak-ng
+sudo apt-get install -y python3-venv espeak-ng python3-gpiozero python3-lgpio
 sudo apt-get install -y libespeak1 || echo "libespeak1 not available; voice feedback may be disabled."
 
-python3 -m venv "$INSTALL_DIR/.venv"
+# --system-site-packages so the venv can use the OS's GPIO packages.
+python3 -m venv --system-site-packages "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip
 "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 

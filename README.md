@@ -50,8 +50,20 @@ Settings come from a TOML file: `--config`, else `$LIGHTMAN_CONFIG`, else `./lig
 | `dashboard.host` | `"0.0.0.0"` | Use `"127.0.0.1"` to allow only a screen attached to the Pi |
 | `dashboard.port` | `5000` | Dashboard/API port |
 | `voice.enabled` | `true` | Spoken copilot feedback |
+| `override.pin` | `-1` | BCM GPIO pin of the physical override button/switch. `-1` means none |
+| `override.mode` | `"button"` | `"button"` or `"switch"` (see below) |
+| `override.long_press` | `2.0` | Seconds to hold the button for revert to stock |
 
 > Not yet verified on real Pi hardware: audio output from a system service. If voice is silent under systemd, check `journalctl -u lightman` for "voice feedback disabled". The rest of the service is unaffected.
+
+### Physical override
+
+Wire a momentary button (or a toggle switch) between a free GPIO pin and GND. The Pi's internal pull-up is used, so no resistor is needed. Set `override.pin` to the pin's BCM number, e.g. `17` for physical pin 11. Nothing connects to the ECU.
+
+- **Button mode:** a short press toggles the profile. From street it goes to race; from anything else (race, stock, a directly chosen tune) it goes to street, so the default direction is the safer one. Holding for `long_press` seconds **reverts to stock**.
+- **Switch mode:** on selects race and off selects street. The current position is applied when Lightman starts.
+
+Override actions are normal `manual` switches. Approval and engine-off rules apply, they appear in the switch history, and the copilot announces them.
 
 ## Development
 

@@ -31,6 +31,11 @@ DEFAULTS = {
     'voice': {
         'enabled': True,
     },
+    'override': {
+        'pin': -1,             # BCM GPIO pin of the physical button/switch; -1 = no physical override
+        'mode': 'button',      # 'button' (short press toggles street/race, long press = stock) or 'switch'
+        'long_press': 2.0,     # seconds held for revert to stock (button mode)
+    },
 }
 
 # Extra checks beyond "same type as the default": dotted key -> (test, message).
@@ -43,6 +48,9 @@ _CHECKS = {
                         "must be [lat1, lon1, lat2, lon2]"),
     'lap_timing.min_lap_time': (lambda v: v >= 0, "must be 0 or more"),
     'dashboard.port': (lambda v: 0 <= v <= 65535, "must be a port number"),
+    'override.pin': (lambda v: -1 <= v <= 27, "must be a BCM GPIO number 0-27, or -1 to disable"),
+    'override.mode': (lambda v: v in ('button', 'switch'), "must be 'button' or 'switch'"),
+    'override.long_press': (lambda v: 0.5 <= v <= 10, "must be between 0.5 and 10 seconds"),
 }
 
 class ConfigError(ValueError):

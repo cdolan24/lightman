@@ -12,6 +12,7 @@ from data_acquisition import obd_reader
 from data_acquisition.data_logger import DataLogger, close_stale_sessions, sampled_engine_rpm
 from data_acquisition.gps_reader import open_serial_gps
 from tune_management import car_database
+from tune_management.override_control import OverrideControl, attach_gpio
 from tune_management.tune_switcher import TuneSwitcher
 from user_interface.dashboard import create_app
 from voice_assistant.announcer import Announcer
@@ -38,7 +39,7 @@ def supervise(name, target, stop_event, restart_delay=5.0):
 
 class LightmanService:
     def __init__(self, config, obd_connect=obd_reader.connect, open_gps=open_serial_gps,
-                 make_speak=default_make_speak, restart_delay=5.0, feedback_interval=1.0):
+                 make_speak=default_make_speak, restart_delay=5.0, feedback_interval=1.0, gpio_pin_factory=None):
         self.config = config
         self.car_id = config['car_id']
         self._obd_connect = obd_connect
@@ -46,10 +47,12 @@ class LightmanService:
         self._make_speak = make_speak
         self._restart_delay = restart_delay
         self._feedback_interval = feedback_interval
+        self._gpio_pin_factory = gpio_pin_factory
         self.stop_event = threading.Event()
         self._threads = []
         self.server = None
         self.announcer = None
+        self.override_device = None
 
     @property
     def port(self):
@@ -63,7 +66,7 @@ class LightmanService:
 
         # Dashboard first, so it's reachable while the OBD adapter is still connecting.
         car_id = self.car_id
-        app = create_app(lambda cid: TuneSwitcher(cid, engine_rpm=lambda: sampled_engine_rpm(cid)))
+        app = create_app(self._switcher)
         dash = self.config['dashboard']
         self.server = make_server(dash['host'], dash['port'], app, threaded=True)
         log.info("Dashboard on http://%s:%d/?car=%d", dash['host'], self.port, car_id)
@@ -82,6 +85,24 @@ class LightmanService:
             self.announcer.say("Lightman copilot online.")
             self._spawn('feedback', lambda: FeedbackMonitor(car_id, self.announcer).run(
                 self._feedback_interval, self.stop_event))
+
+        self._start_override()
+
+    @staticmethod
+    def _switcher(car_id):
+        # Engine speed for safety checks comes from recorded samples; the logger owns the adapter.
+        return TuneSwitcher(car_id, engine_rpm=lambda: sampled_engine_rpm(car_id))
+
+    def _start_override(self):
+        cfg = self.config['override']
+        if cfg['pin'] < 0:
+            return
+        try:
+            self.override_device = attach_gpio(OverrideControl(self._switcher(self.car_id)), cfg['pin'],
+                                               cfg['mode'], cfg['long_press'], pin_factory=self._gpio_pin_factory)
+            log.info("Physical override (%s) on GPIO %d", cfg['mode'], cfg['pin'])
+        except Exception:
+            log.exception("Physical override on GPIO %d unavailable; override disabled", cfg['pin'])
 
     def _run_logger(self):
         obd_cfg, gps_cfg = self.config['obd'], self.config['gps']
@@ -125,4 +146,6 @@ class LightmanService:
             thread.join(timeout=10)
         if self.announcer:
             self.announcer.stop()
+        if self.override_device:
+            self.override_device.close()
         log.info("Lightman stopped")
