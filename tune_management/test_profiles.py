@@ -3,7 +3,7 @@
 import unittest
 
 from tune_management.profiles import ProfileManager, UnknownProfile
-from tune_management.tune_manager import TuneManager, TuneNotFound
+from tune_management.tune_manager import TuneManager, TuneNotApproved, TuneNotFound
 
 class TestProfiles(unittest.TestCase):
     def test_default_profiles_unassigned(self):
@@ -37,6 +37,13 @@ class TestProfiles(unittest.TestCase):
         tm.delete_tune(tune_id)
         with self.assertRaises(TuneNotFound):
             pm.assign('race', tune_id)
+
+    def test_unapproved_tune_is_refused(self):
+        tune_id = TuneManager(1).save_tune("AI idea", b"x", origin='generated')
+        pm = ProfileManager(1)
+        with self.assertRaises(TuneNotApproved):
+            pm.assign('race', tune_id)
+        self.assertIsNone(pm.get('race')['tune_id'])
 
     def test_names_are_case_insensitive(self):
         self.assertEqual(ProfileManager(1).get(' Race ')['name'], 'race')

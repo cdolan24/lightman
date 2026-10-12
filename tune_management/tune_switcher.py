@@ -60,8 +60,28 @@ class TuneSwitcher:
 
         with _switch_lock:
             previous = self.active()['tune_id']
-            result = self._attempt(profile, tune_id, previous)
+            if source == 'auto' and tune_id is not None:
+                # Automation may only pick between profiles a person has already set up.
+                result = SwitchResult(False, self.backend.method, previous_tune_id=previous, error='refused',
+                                      reason="Automatic switching may only select a profile, not a specific tune")
+            else:
+                result = self._attempt(profile, tune_id, previous)
             self._record(source, profile, tune_id, result)
+            return result
+
+    def revert_to_stock(self, source):
+        """Activate the car's stock tune. Allowed from every source; the usual backend and engine rules apply."""
+        if source not in SOURCES:
+            raise ValueError(f"source must be one of {SOURCES}, not {source!r}")
+        with _switch_lock:
+            previous = self.active()['tune_id']
+            stock = self.tunes.get_stock_tune()
+            if stock is None:
+                result = SwitchResult(False, self.backend.method, previous_tune_id=previous, error='refused',
+                                      reason=f"Car {self.car_id} has no stock tune to revert to")
+            else:
+                result = self._attempt(None, stock['id'], previous)
+            self._record(source, None, stock['id'] if stock else None, result, kind='revert')
             return result
 
     def _attempt(self, profile, tune_id, previous):
@@ -79,6 +99,8 @@ class TuneSwitcher:
             tune = self.tunes.get_tune(tune_id)
         except (UnknownProfile, TuneNotFound) as e:
             return fail('not_found', str(e))
+        if not tune['approved']:
+            return fail('refused', f"Tune '{tune['name']}' ({tune['origin']}) is not approved")
 
         if self.backend.method == 'flash':
             rpm = self.engine_rpm() if self.engine_rpm else None
@@ -99,14 +121,14 @@ class TuneSwitcher:
         return SwitchResult(True, self.backend.method, active_tune_id=tune['id'], active_profile=profile_name,
                             previous_tune_id=previous)
 
-    def _record(self, source, profile, tune_id, result):
+    def _record(self, source, profile, tune_id, result, kind='switch'):
         conn = connect_car_db(self.car_id)
         with conn:
             conn.execute('''
-                INSERT INTO tune_switches (timestamp, source, requested_profile, requested_tune_id,
+                INSERT INTO tune_switches (timestamp, source, kind, requested_profile, requested_tune_id,
                                            from_tune_id, to_tune_id, method, success, reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (_now(), source, profile, tune_id, result.previous_tune_id, result.active_tune_id,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (_now(), source, kind, profile, tune_id, result.previous_tune_id, result.active_tune_id,
                   result.method, int(result.ok), result.reason))
         conn.close()
 

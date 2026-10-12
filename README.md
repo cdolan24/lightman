@@ -52,7 +52,27 @@ Set `LIGHTMAN_DB_ROOT` to store car databases somewhere other than `./car_databa
 
 Each car's library holds its tunes. In `TuneManager` you can save, get, rename and delete them. Deleted tunes are hidden but kept, so old sessions still resolve the tune they ran. To share a tune, export it to a portable `.lmtune` file and import it into another car.
 
-Every car has a `race` and a `street` profile, and each can point at a tune from that car's library (`ProfileManager`). All switching goes through `TuneSwitcher.switch(source, profile=... | tune_id=...)`, where `source` is one of `voice`, `dashboard`, `app`, `manual` or `auto`. The active tune persists across restarts. Every attempt is recorded in the `tune_switches` history, including refused ones, and new logging sessions are tagged with the active tune by default.
+### Tune safety: provenance, approval and stock
+
+Every tune records its **origin**:
+- `human` and `stock` tunes are approved when they're saved.
+- `imported` and `generated` tunes start **unapproved**. They can't be assigned to a profile or activated until a person approves them by name from the dashboard, the app or the CLI. `voice` and `auto` can never approve a tune.
+- Tune data and origin can't be changed after saving (a database trigger enforces this), so an approval always covers exactly the bytes that were reviewed. To change a tune, save a new one.
+
+Each car can hold one protected **stock tune**, which can't be deleted. **Revert to stock** works from every source, including `auto` and `voice`, and still obeys the engine-off rule for flashing. The `auto` source may only switch by profile, never to an arbitrary tune.
+
+Tunes that existed before provenance tracking were approved automatically with `approved_by = migration`. Review them with `tune_cli list`.
+
+```
+python -m tune_management.tune_cli --car-id 1 list
+python -m tune_management.tune_cli --car-id 1 save-stock stock.bin [--name Stock]
+python -m tune_management.tune_cli --car-id 1 import shared.lmtune
+python -m tune_management.tune_cli --car-id 1 approve 4 --by Connor [--note "checked timing/AFR"]
+```
+
+### Profiles and switching
+
+Every car has a `race` and a `street` profile, and each can point at a tune from that car's library (`ProfileManager`). Only approved tunes can be assigned. All switching goes through `TuneSwitcher.switch(source, profile=... | tune_id=...)`, where `source` is one of `voice`, `dashboard`, `app`, `manual` or `auto`. The active tune persists across restarts. Every attempt is recorded in the `tune_switches` history, including refused ones, and new logging sessions are tagged with the active tune by default.
 
 **ECU backends.** A switch is applied through an ECU backend (`tune_management/ecu_backend.py`), and the backend's method is reported with every result:
 
@@ -62,7 +82,7 @@ Every car has a `race` and a `street` profile, and each can point at a tune from
 | `live` | Planned | Flips the ECU's map-switch input (e.g. from a GPIO pin) for instant switching while driving |
 | `flash` | Planned | Writes the full tune image. Only allowed when the engine is confirmed off (0 rpm); refused if the engine is running or rpm can't be read |
 
-> ⚠️ **Tune safety is an open issue.** Tune contents are not validated yet, there is no safety envelope, and AI-generated tunes need no human approval. See [docs/open-issues/tune-safety.md](docs/open-issues/tune-safety.md). This must be resolved before any `live`/`flash` backend or tune generation ships.
+> ⚠️ **Tune safety is an open issue.** Approval, the `auto` restriction and the protected stock tune are in place, but tune contents are not validated and there is no safety envelope yet. See [docs/open-issues/tune-safety.md](docs/open-issues/tune-safety.md). The remaining items must be resolved before any `live`/`flash` backend or tune generation ships.
 
 ### HTTP API
 
@@ -71,12 +91,14 @@ Every car has a `race` and a `street` profile, and each can point at a tune from
 | Method & path | Body | Description |
 | --- | --- | --- |
 | `GET /api/obd` | | Live OBD-II readings |
-| `GET /api/cars/<id>/tunes` | | The car's tune library |
+| `GET /api/cars/<id>/tunes` | | The car's tune library, with `origin`, `approved`, `approved_by` and `approved_at` |
+| `POST /api/cars/<id>/tunes/<tune_id>/approve` | `{"source": "dashboard", "approved_by": "Connor", "note": "..."}` | Approve a tune. `403` if the source isn't `dashboard`/`app`/`manual` or the name is missing |
 | `GET /api/cars/<id>/profiles` | | Profiles and their assigned tunes |
-| `PUT /api/cars/<id>/profiles/<name>` | `{"tune_id": 3}` | Assign a tune to a profile |
+| `PUT /api/cars/<id>/profiles/<name>` | `{"tune_id": 3}` | Assign a tune to a profile (`409` if it isn't approved) |
 | `GET /api/cars/<id>/active` | | Active tune and profile |
 | `POST /api/cars/<id>/switch` | `{"source": "dashboard", "profile": "race"}` or `{"source": "app", "tune_id": 3}` | Switch tunes. `200` on success, `404` if the profile or tune is unknown, `409` if refused or the ECU failed (with `reason`) |
-| `GET /api/cars/<id>/history?limit=50` | | Switch history, newest first |
+| `POST /api/cars/<id>/revert` | `{"source": "voice"}` | Revert to the stock tune (`409` if there's no stock tune or it was refused) |
+| `GET /api/cars/<id>/history?limit=50` | | Switch history, newest first (`kind` is `switch` or `revert`) |
 
 > The API has no authentication yet, so anyone on the Pi's network can switch tunes. That is acceptable while switching is software-only, but authentication **must** be added before a `live` or `flash` backend ships.
 

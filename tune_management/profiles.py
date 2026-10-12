@@ -1,7 +1,7 @@
 # profiles.py
 
 from tune_management.car_database import connect_car_db
-from tune_management.tune_manager import TuneManager
+from tune_management.tune_manager import TuneManager, TuneNotApproved
 
 class UnknownProfile(LookupError):
     pass
@@ -33,9 +33,11 @@ class ProfileManager:
         raise UnknownProfile(f"Unknown profile '{name}' for car {self.car_id}")
 
     def assign(self, name, tune_id):
-        """Point a profile at a tune from this car's library (raises TuneNotFound otherwise)."""
+        """Point a profile at an approved tune from this car's library (raises TuneNotFound / TuneNotApproved)."""
         profile = self.get(name)
-        self.tunes.get_tune(tune_id)
+        tune = self.tunes.get_tune(tune_id)
+        if not tune['approved']:
+            raise TuneNotApproved(f"Tune '{tune['name']}' ({tune['origin']}) must be approved before it can be assigned")
         conn = connect_car_db(self.car_id)
         with conn:
             conn.execute("UPDATE profiles SET tune_id = ? WHERE name = ?", (tune_id, profile['name']))

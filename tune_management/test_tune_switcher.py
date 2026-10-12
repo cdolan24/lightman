@@ -107,5 +107,69 @@ class TestTuneSwitcher(unittest.TestCase):
         self.assertEqual(refused['from_tune_id'], self.race)
         self.assertIn("No tune is assigned", refused['reason'])
 
+class TestSwitchSafety(unittest.TestCase):
+    def setUp(self):
+        self.tm = TuneManager(1)
+        self.race = self.tm.save_tune("Race", b"r")
+        self.street = self.tm.save_tune("Street", b"s")
+        ProfileManager(1).assign('race', self.race)
+        ProfileManager(1).assign('street', self.street)
+
+    def test_unapproved_tune_is_refused(self):
+        imported = self.tm.save_tune("From forum", b"?", origin='imported')
+        switcher = TuneSwitcher(1)
+        switcher.switch('manual', profile='race')
+        result = switcher.switch('app', tune_id=imported)
+        self.assertEqual(result.error, 'refused')
+        self.assertIn("not approved", result.reason)
+        self.assertEqual(switcher.active()['tune_id'], self.race)
+        self.assertFalse(switcher.history()[0]['success'])
+
+    def test_approved_import_can_be_activated(self):
+        imported = self.tm.save_tune("From forum", b"?", origin='imported')
+        self.tm.approve_tune(imported, "Connor", 'dashboard')
+        self.assertTrue(TuneSwitcher(1).switch('app', tune_id=imported).ok)
+
+    def test_auto_by_profile(self):
+        result = TuneSwitcher(1).switch('auto', profile='street')
+        self.assertTrue(result.ok)
+        self.assertEqual(result.active_tune_id, self.street)
+
+    def test_auto_by_tune_id_is_refused(self):
+        switcher = TuneSwitcher(1)
+        result = switcher.switch('auto', tune_id=self.street)
+        self.assertEqual(result.error, 'refused')
+        self.assertIn("may only select a profile", result.reason)
+        self.assertIsNone(switcher.active()['tune_id'])
+        entry = switcher.history()[0]
+        self.assertEqual((entry['source'], entry['success'], entry['requested_tune_id']), ('auto', False, self.street))
+
+    def test_revert_to_stock(self):
+        stock = self.tm.save_stock_tune(b"factory")
+        switcher = TuneSwitcher(1)
+        switcher.switch('manual', profile='race')
+        result = switcher.revert_to_stock('voice')
+        self.assertTrue(result.ok)
+        self.assertEqual((result.active_tune_id, result.active_profile, result.previous_tune_id),
+                         (stock, None, self.race))
+        self.assertEqual((switcher.active()['tune_id'], switcher.active()['profile']), (stock, None))
+        entry = switcher.history()[0]
+        self.assertEqual((entry['kind'], entry['source'], entry['success']), ('revert', 'voice', True))
+
+    def test_revert_without_stock(self):
+        switcher = TuneSwitcher(1)
+        result = switcher.revert_to_stock('auto')
+        self.assertEqual(result.error, 'refused')
+        self.assertIn("no stock tune", result.reason)
+        self.assertEqual(switcher.history()[0]['kind'], 'revert')
+
+    def test_revert_flash_while_running_is_refused(self):
+        self.tm.save_stock_tune(b"factory")
+        backend = FlashBackend()
+        result = TuneSwitcher(1, backend=backend, engine_rpm=lambda: 3000.0).revert_to_stock('voice')
+        self.assertEqual(result.error, 'refused')
+        self.assertIn("Engine must be off", result.reason)
+        self.assertEqual(backend.applied, [])
+
 if __name__ == "__main__":
     unittest.main()

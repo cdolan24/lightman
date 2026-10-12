@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Read at call time so tests (or a deployment) can point it elsewhere.
@@ -76,10 +77,27 @@ def init_car_db(car_id):
         )
     ''')
     # Columns added after the original tunes schema; migrate older databases in place.
-    tune_columns = {row[1] for row in c.execute("PRAGMA table_info(tunes)")}
-    for column in ('notes', 'deleted_at'):
-        if column not in tune_columns:
-            c.execute(f"ALTER TABLE tunes ADD COLUMN {column} TEXT")
+    added = _add_columns(c, 'tunes', {
+        'notes': 'TEXT',
+        'deleted_at': 'TEXT',
+        'origin': "TEXT NOT NULL DEFAULT 'human'",
+        'approved_at': 'TEXT',
+        'approved_by': 'TEXT',
+        'approval_note': 'TEXT',
+    })
+    if 'origin' in added:
+        # Tunes that predate provenance were saved by a person; approve them, marked for review.
+        c.execute("UPDATE tunes SET approved_at = ?, approved_by = 'migration' WHERE approved_at IS NULL",
+                  (datetime.now(timezone.utc).isoformat(),))
+    # Approval covers exact bytes and origin, so neither may change after saving, whoever writes the SQL.
+    c.execute('''
+        CREATE TRIGGER IF NOT EXISTS tunes_immutable
+        BEFORE UPDATE OF data, origin ON tunes
+        BEGIN
+            SELECT RAISE(ABORT, 'tune data and origin are immutable; save a new tune instead');
+        END
+    ''')
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_stock_tune ON tunes(origin) WHERE origin = 'stock'")
     c.execute('''
         CREATE TABLE IF NOT EXISTS profiles (
             name TEXT PRIMARY KEY,
@@ -112,8 +130,17 @@ def init_car_db(car_id):
             reason TEXT
         )
     ''')
+    _add_columns(c, 'tune_switches', {'kind': "TEXT NOT NULL DEFAULT 'switch'"})
     conn.commit()
     conn.close()
+
+def _add_columns(c, table, columns):
+    """Add any missing columns to table; return the names that were added."""
+    existing = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
+    added = [name for name in columns if name not in existing]
+    for name in added:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {columns[name]}")
+    return added
 
 def connect_car_db(car_id):
     """Initialize (if needed) and open a car's database with rows accessible by column name."""

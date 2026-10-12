@@ -11,14 +11,17 @@ A bad tune can destroy an engine within seconds. Too much ignition advance cause
 - **Switching is software-only.** The `software` ECU backend records the selection and never touches the ECU. This is currently the main safeguard.
 - **Engine-off gate.** Any `flash` backend switch is refused unless engine speed reads 0 rpm. It is also refused when rpm cannot be read.
 - **Audit trail.** Every switch attempt is recorded with its source (`voice`, `dashboard`, `app`, `manual`, `auto`), including refusals and failures.
+- **Provenance and approval** (change `add-tune-provenance`). Tunes record their origin. Imported and generated tunes must be approved by a named person from the dashboard, app or CLI before they can be assigned or activated, and `voice`/`auto` can never approve. A database trigger makes tune data and origin immutable.
+- **`auto` restricted.** Automatic switching can only select a profile, never a specific tune id.
+- **Protected stock tune and revert.** Each car has at most one stock tune, which can't be deleted. Revert to stock works from every source and still obeys the engine-off rule.
 
 ## Gaps
 
 1. **No tune content validation.** Any bytes can be saved, imported (`.lmtune`) and activated. Nothing checks image size, ECU/calibration ID or checksums.
 2. **No safety envelope.** Nothing compares a tune's maps (timing, AFR/fuel, boost, rev limit, injector duty) against limits or a known-good baseline.
 3. **Compliance checker is a stub.** `tune_management/compliance_checker.py` always returns `True`.
-4. **No provenance or human approval.** Hand-made, imported and AI-generated tunes are indistinguishable. The `auto` source can activate any tune in the library.
-5. **No fallback or rollback.** There is no protected stock tune, no post-flash read-back verification, and no automatic revert.
+4. ~~**No provenance or human approval.**~~ Addressed by `add-tune-provenance`. Approver identity is still self-reported until the API has authentication.
+5. **Partial fallback.** The protected stock tune and manual/voice revert now exist. There is still no post-flash read-back verification and no automatic revert, and the stock image is supplied as a file rather than read from the ECU.
 6. **No post-switch monitoring.** Nothing watches knock, AFR, coolant/oil temperature or EGT after a switch to catch a tune that misbehaves.
 
 ## Proposed safeguards (to scope into OpenSpec changes)

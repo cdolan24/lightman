@@ -55,6 +55,44 @@ class TestTuneAPI(unittest.TestCase):
         self.assertEqual([t['name'] for t in self.client.get('/api/cars/1/tunes').json], ["Race", "Street"])
         self.assertEqual([p['name'] for p in self.client.get('/api/cars/1/profiles').json], ['race', 'street'])
 
+class TestApprovalAPI(unittest.TestCase):
+    def setUp(self):
+        self.client = make_client()
+        self.tm = TuneManager(1)
+        self.imported = self.tm.save_tune("Forum tune", b"?", origin='imported')
+
+    def test_list_shows_origin_and_approval(self):
+        (tune,) = self.client.get('/api/cars/1/tunes').json
+        self.assertEqual((tune['origin'], tune['approved']), ('imported', False))
+
+    def test_approve(self):
+        r = self.client.post(f'/api/cars/1/tunes/{self.imported}/approve',
+                             json={'source': 'dashboard', 'approved_by': 'Connor', 'note': 'looked fine'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.json['tune']['approved'], r.json['tune']['approved_by']), (True, "Connor (dashboard)"))
+
+    def test_auto_approval_refused(self):
+        r = self.client.post(f'/api/cars/1/tunes/{self.imported}/approve',
+                             json={'source': 'auto', 'approved_by': 'Lightman'})
+        self.assertEqual(r.status_code, 403)
+        self.assertFalse(self.tm.get_tune(self.imported)['approved'])
+        r = self.client.post(f'/api/cars/1/tunes/{self.imported}/approve', json={'source': 'app', 'approved_by': 5})
+        self.assertEqual(r.status_code, 403)
+        r = self.client.post('/api/cars/1/tunes/999/approve', json={'source': 'app', 'approved_by': 'Connor'})
+        self.assertEqual(r.status_code, 404)
+
+    def test_assigning_unapproved_is_409(self):
+        r = self.client.put('/api/cars/1/profiles/race', json={'tune_id': self.imported})
+        self.assertEqual(r.status_code, 409)
+
+    def test_revert(self):
+        self.assertEqual(self.client.post('/api/cars/1/revert', json={'source': 'app'}).status_code, 409)
+        stock = self.tm.save_stock_tune(b"factory")
+        r = self.client.post('/api/cars/1/revert', json={'source': 'app'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json['active_tune_id'], stock)
+        self.assertEqual(self.client.post('/api/cars/1/revert', json={}).status_code, 400)
+
 class TestDashboardImport(unittest.TestCase):
     def test_import_does_not_touch_obd(self):
         with mock.patch('data_acquisition.obd_reader.obd.OBD') as obd_ctor:
