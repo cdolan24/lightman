@@ -1,7 +1,7 @@
 # performance_report.py
 
 import sqlite3
-from car_database import get_db_path
+from tune_management.car_database import get_db_path
 
 class PerformanceReport:
     def __init__(self, car_id):

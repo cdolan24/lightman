@@ -1,15 +1,8 @@
-pyOBD
 obd
+pyserial
 Flask
 pandas
 numpy
 pyttsx3
 SpeechRecognition
-pyOBD
-python-OBD
-Flask
-pandas
-numpy
-pyttsx3
-SpeechRecognition
-sqlite3
+pytest

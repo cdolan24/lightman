@@ -1,8 +1,7 @@
 # tune_manager.py
 
 import sqlite3
-from pathlib import Path
-from car_database import get_db_path, init_car_db
+from tune_management.car_database import get_db_path, init_car_db
 
 class TuneManager:
     def __init__(self, car_id):
