@@ -47,8 +47,8 @@ Status key: **done** · **partial** · **todo** · **blocked** (with reason). Im
 - **done** Tune provenance, human approval and protected stock tune (tune safety #1, part 1)
 - **done** Analyze live data to **recommend** profiles (`tune-recommendations`). Advisory only: auto-adjusting tunes is excluded until tune safety (#1) is resolved. Historical/ML analysis is **todo**
 
-## 4. Real-Time Feedback & Copilot Interface — todo
-- **todo** Voice assistant (Jarvis-style): text-to-speech feedback on engine health, performance and tune status
+## 4. Real-Time Feedback & Copilot Interface — partial
+- **done** Voice assistant (Jarvis-style): text-to-speech feedback on engine health, performance and tune status (`copilot-feedback`)
 - **todo** Respond to user queries and commands
 - **todo** Dashboard display: live data, lap times, tune status, alerts
 

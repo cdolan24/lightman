@@ -118,6 +118,23 @@ The limits (`DEFAULT_LIMITS`, plus `max_sample_age` = 10 s) can be overridden pe
 
 > The API has no authentication yet, so anyone on the Pi's network can switch tunes. That is acceptable while switching is software-only, but authentication **must** be added before a `live` or `flash` backend ships.
 
+## Spoken Copilot Feedback
+
+```
+python -m voice_assistant.feedback_monitor --car-id 1 [--interval 1]
+```
+
+The feedback monitor polls the car's database once a second and speaks through a non-blocking queue (`voice_assistant/announcer.py`). Warnings are spoken first, duplicates are collapsed, and messages that waited too long (15 s, or 30 s for warnings) are dropped instead of spoken late. It works alongside the data logger and the dashboard, whichever process wrote the data.
+
+| Announcement | When (defaults in `feedback_monitor.DEFAULT_LIMITS`) |
+| --- | --- |
+| Coolant warning | Coolant ≥ `coolant_critical` (110 °C) during a session. Repeats after `repeat_interval` (60 s) if it stays hot, and re-arms once coolant falls `coolant_rearm_drop` (5 °C) below the limit |
+| Low fuel | Fuel ≤ `fuel_low` (10 %). Once, then again only after refuelling |
+| Engine data lost / back | No rpm in the last `obd_loss_samples` (5) samples after the session had engine data |
+| Lap time | Each completed lap, e.g. "Lap 2, 1 minute 32.4 seconds, best lap" |
+| Recommendations | When a recommendation first appears (warnings as warnings) |
+| Tune switches | Results of switches not made by voice. Software-only switches say the ECU was not changed, and refusals give the reason |
+
 ## Notes
 - Each car has a dedicated database for tunes and logs.
 - Tune authoring, voice training data and local model updates will live in a separate [companion app](docs/companion-app.md), keeping this repository drag-and-drop for the Pi.
